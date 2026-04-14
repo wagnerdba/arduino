@@ -11,4 +11,5 @@ make -j4
 
 # run it
 cd ..
-./build/radiolib-unittest --log_level=message
+
+./build/radiolib-unittest --log_level=message --detect_memory_leaks

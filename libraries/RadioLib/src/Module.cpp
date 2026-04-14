@@ -81,7 +81,7 @@ int16_t Module::SPIsetRegValue(uint32_t reg, uint8_t value, uint8_t msb, uint8_t
     #if RADIOLIB_DEBUG_SPI
     uint8_t readValue = 0x00;
     #endif
-    while(this->hal->micros() - start < (checkInterval * 1000)) {
+    while(this->hal->micros() - start < ((RadioLibTime_t)checkInterval * 1000UL)) {
       uint8_t val = SPIreadRegister(reg);
       if((val & checkMask) == (newValue & checkMask)) {
         // check passed, we can stop the loop
@@ -424,7 +424,9 @@ int16_t Module::SPItransferStream(const uint8_t* cmd, uint8_t cmdLen, bool write
     }
     size_t n = 0;
     for(; n < cmdLen; n++) {
-      RADIOLIB_DEBUG_SPI_PRINT_NOTAG("%X\t", cmd[n]);
+      // tab character intentionally omitted here
+      // command is a single number so this is easier to parse
+      RADIOLIB_DEBUG_SPI_PRINT_NOTAG("%02X", cmd[n]);
     }
     RADIOLIB_DEBUG_SPI_PRINTLN_NOTAG("");
 
@@ -433,13 +435,14 @@ int16_t Module::SPItransferStream(const uint8_t* cmd, uint8_t cmdLen, bool write
     for(n = 0; n < cmdLen; n++) {
       RADIOLIB_DEBUG_SPI_PRINT_NOTAG("\t");
     }
+    // initialization of n to 0 is skipped here, because we want to skip the command bytes
     for(; n < buffLen; n++) {
-      RADIOLIB_DEBUG_SPI_PRINT_NOTAG("%X\t", buffOut[n]);
+      RADIOLIB_DEBUG_SPI_PRINT_NOTAG("%02X\t", buffOut[n]);
     }
     RADIOLIB_DEBUG_SPI_PRINTLN_NOTAG("");
     RADIOLIB_DEBUG_SPI_PRINT("SO\t");
     for(n = 0; n < buffLen; n++) {
-      RADIOLIB_DEBUG_SPI_PRINT_NOTAG("%X\t", buffIn[n]);
+      RADIOLIB_DEBUG_SPI_PRINT_NOTAG("%02X\t", buffIn[n]);
     }
     RADIOLIB_DEBUG_SPI_PRINTLN_NOTAG("");
   #endif

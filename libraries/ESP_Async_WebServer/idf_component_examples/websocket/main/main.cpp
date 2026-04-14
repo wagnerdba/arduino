@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
-// Copyright 2016-2025 Hristo Gochkov, Mathieu Carbou, Emil Muratov
+// Copyright 2016-2026 Hristo Gochkov, Mathieu Carbou, Emil Muratov, Will Miles
 
 //
 // WebSocket example
@@ -17,7 +17,7 @@ static AsyncWebSocket ws("/ws");
 void setup() {
   Serial.begin(115200);
 
-#if SOC_WIFI_SUPPORTED || CONFIG_ESP_WIFI_REMOTE_ENABLED || LT_ARD_HAS_WIFI
+#if SOC_WIFI_SUPPORTED || CONFIG_ESP_WIFI_REMOTE_ENABLED || LT_ARD_HAS_WIFI || CONFIG_ESP32_WIFI_ENABLED
   WiFi.mode(WIFI_AP);
   WiFi.softAP("esp-captive");
 #endif
@@ -54,8 +54,7 @@ void setup() {
       AwsFrameInfo *info = (AwsFrameInfo *)arg;
       String msg = "";
       if (info->final && info->index == 0 && info->len == len) {
-        if (info->opcode == WS_TEXT) {
-          data[len] = 0;
+        if (info->message_opcode == WS_TEXT) {
           Serial.printf("ws text: %s\n", (char *)data);
         }
       }

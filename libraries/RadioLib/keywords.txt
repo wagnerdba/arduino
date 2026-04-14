@@ -17,6 +17,7 @@ LLCC68	KEYWORD1
 LR1110	KEYWORD1
 LR1120	KEYWORD1
 LR1121	KEYWORD1
+LR2021	KEYWORD1
 nRF24	KEYWORD1
 RF69	KEYWORD1
 RFM22	KEYWORD1
@@ -105,6 +106,9 @@ LR11x0GnssSatellite_t	KEYWORD1
 LR11x0GnssAlmanacStatusPart_t	KEYWORD1
 LR11x0GnssAlmanacStatus_t	KEYWORD1
 
+# LR2021 structures
+LR2021LoRaSideDetector_t	KEYWORD1
+
 #######################################
 # Methods and Functions (KEYWORD2)
 #######################################
@@ -133,6 +137,7 @@ startTransmit	KEYWORD2
 finishTransmit	KEYWORD2
 startReceive	KEYWORD2
 readData	KEYWORD2
+finishReceive	KEYWORD2
 startChannelScan	KEYWORD2
 getChannelScanResult	KEYWORD2
 setBandwidth	KEYWORD2
@@ -195,6 +200,7 @@ getFHSSChannel	KEYWORD2
 clearFHSSInt	KEYWORD2
 randomByte	KEYWORD2
 getPacketLength	KEYWORD2
+getLoRaRxHeaderInfo	KEYWORD2
 setFifoEmptyAction	KEYWORD2
 clearFifoEmptyAction	KEYWORD2
 setFifoThreshold	KEYWORD2
@@ -225,12 +231,13 @@ setCrcFiltering	KEYWORD2
 beginFSK4	KEYWORD2
 
 # SX126x-specific
+beginBPSK	KEYWORD2
 setTCXO	KEYWORD2
 setDio2AsRfSwitch	KEYWORD2
 getTimeOnAir	KEYWORD2
+calculateTimeOnAir KEYWORD2
 implicitHeader	KEYWORD2
 explicitHeader	KEYWORD2
-setSyncBits	KEYWORD2
 setWhitening	KEYWORD2
 startReceiveDutyCycle	KEYWORD2
 startReceiveDutyCycleAuto	KEYWORD2
@@ -277,6 +284,10 @@ updateGnssAlmanac	KEYWORD2
 getGnssPosition	KEYWORD2
 getGnssSatellites	KEYWORD2
 
+# LR2021
+beginOOK	KEYWORD2
+setSideDetector	KEYWORD2
+
 # RTTY
 idle	KEYWORD2
 byteArr	KEYWORD2
@@ -303,7 +314,9 @@ beginBLE	KEYWORD2
 setAccessAddress	KEYWORD2
 range	KEYWORD2
 startRanging	KEYWORD2
+finishRanging	KEYWORD2
 getRangingResult	KEYWORD2
+getRangingResultRaw	KEYWORD2
 
 # Hellschreiber
 printGlyph	KEYWORD2
@@ -373,6 +386,9 @@ setDwellTime	KEYWORD2
 setCSMA	KEYWORD2
 setDeviceStatus	KEYWORD2
 scheduleTransmission	KEYWORD2
+getBand	KEYWORD2
+getClass	KEYWORD2
+getVersionMajor	KEYWORD2
 getFCntUp	KEYWORD2
 getNFCntDown	KEYWORD2
 getAFCntDown	KEYWORD2
@@ -523,3 +539,6 @@ RADIOLIB_LR1120_FIRMWARE_0102	LITERAL1
 RADIOLIB_LR1120_FIRMWARE_0201	LITERAL1
 RADIOLIB_LR1121_FIRMWARE_0102	LITERAL1
 RADIOLIB_LR1121_FIRMWARE_0103	LITERAL1
+
+RADIOLIB_ERR_FRONTEND_CALIBRATION_FAILED	LITERAL1
+RADIOLIB_ERR_INVALID_SIDE_DETECT	LITERAL1
