@@ -52,8 +52,10 @@ void print_wakeup_reason() {
 }
 
 void setup() {
-#if defined(WIFI_LORA_32_V4)||defined(WIRELESS_TRACKER_V2)
+#if defined(WIFI_LORA_32_V4) && defined(USE_GC1109_PA)
     rtc_gpio_hold_dis((gpio_num_t)LORA_PA_EN);
+#elif defined(WIRELESS_TRACKER_V2) || (defined(WIFI_LORA_32_V4) && defined(USE_KCT8103L_PA))
+    rtc_gpio_hold_dis((gpio_num_t)LORA_PA_CSD);
 #endif
     Serial.begin(115200);
     Mcu.begin(HELTEC_BOARD,SLOW_CLK_TPYE);
@@ -91,10 +93,14 @@ void loop()
   {
     Serial.println("into RX mode");
     Radio.Rx(0);
-#if defined(WIFI_LORA_32_V4)||defined(WIRELESS_TRACKER_V2)
+#if defined(WIFI_LORA_32_V4) && defined(USE_GC1109_PA)
     pinMode(LORA_PA_EN,OUTPUT);
     digitalWrite(LORA_PA_EN,HIGH);
     rtc_gpio_hold_en((gpio_num_t)LORA_PA_EN);
+#elif defined(WIRELESS_TRACKER_V2) || (defined(WIFI_LORA_32_V4) && defined(USE_KCT8103L_PA))
+    pinMode(LORA_PA_CSD,OUTPUT);
+    digitalWrite(LORA_PA_CSD,HIGH);
+    rtc_gpio_hold_en((gpio_num_t)LORA_PA_CSD);
 #endif
     esp_sleep_enable_ext0_wakeup((gpio_num_t)RADIO_DIO_1, 1);  //1 = High, 0 = Low
     rtc_gpio_pullup_dis((gpio_num_t)RADIO_DIO_1);

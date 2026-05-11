@@ -145,13 +145,6 @@ void lora_init(void)
 	RadioEvents.TxTimeout = OnTxTimeout;
 	RadioEvents.RxDone = OnRxDone;
 
-	pinMode(LORA_PA_POWER,ANALOG);
-	pinMode(LORA_PA_EN,OUTPUT);
-	pinMode(LORA_PA_TX_EN,OUTPUT);
-	digitalWrite(LORA_PA_EN,HIGH);
-	digitalWrite(LORA_PA_TX_EN,HIGH);
-
-
 	Radio.Init( &RadioEvents );
 	Radio.SetChannel( RF_FREQUENCY );
 	Radio.SetTxConfig( MODEM_LORA, TX_OUTPUT_POWER, 0, LORA_BANDWIDTH,
@@ -209,15 +202,6 @@ void wifi_connect_init(void)
 
 bool wifi_connect_try(uint8_t try_num)
 {
-	uint8_t count;
-	while(WiFi.status() != WL_CONNECTED && count < try_num)
-	{
-		count ++;
-		factory_display.clear();
-		factory_display.drawString(0, 0, "wifi connecting...");
-		factory_display.display();
-		custom_delay(500);
-	}
 	if(WiFi.status() == WL_CONNECTED)
 	{
 		factory_display.clear();
@@ -226,15 +210,29 @@ bool wifi_connect_try(uint8_t try_num)
 		custom_delay(2500);
 		return true;
 	}
-	else
+
+	factory_display.clear();
+	factory_display.drawString(0, 0, "wifi connecting...");
+	factory_display.display();
+
+	for(uint8_t count = 0; count < try_num; count++)
 	{
-		factory_display.clear();
-		factory_display.drawString(0, 0, "wifi connect failed");
-		factory_display.display();
-		custom_delay(1000);
-		return false;
+		custom_delay(500);
+		if(WiFi.status() == WL_CONNECTED)
+		{
+			factory_display.clear();
+			factory_display.drawString(0, 0, "wifi connect OK");
+			factory_display.display();
+			custom_delay(2500);
+			return true;
+		}
 	}
-	
+
+	factory_display.clear();
+	factory_display.drawString(0, 0, "wifi connect failed");
+	factory_display.display();
+	custom_delay(1000);
+	return false;
 }
 
 void wifi_scan(unsigned int value)
@@ -335,10 +333,6 @@ void enter_deepsleep(void)
 	VextOFF();
 	Radio.Sleep();
 	SPI.end();
-	pinMode(2,OUTPUT);
-	digitalWrite(2,LOW);
-	rtc_gpio_hold_en(GPIO_NUM_2);
-	rtc_gpio_isolate(GPIO_NUM_2);
 	pinMode(7,OUTPUT);
 	digitalWrite(7,LOW);
 	rtc_gpio_hold_en(GPIO_NUM_7);
@@ -528,11 +522,10 @@ void loop()
 		}
 		case WIFI_CONNECT_TEST:
 		{
-			if(wifi_connect_try(2)==true)
+			if(wifi_connect_try(2) || (--wifi_connect_try_num == 0))
 			{
 				test_status = WIFI_SCAN_TEST;
 			}
-			wifi_connect_try_num--;
 			break;
 		}
 		case WIFI_SCAN_TEST:

@@ -5,7 +5,10 @@
 
 #include <Arduino.h>
 #include <FS.h>
+
+#if !defined(HOST) || __has_include(<lwip/tcpbase.h>)
 #include <lwip/tcpbase.h>
+#endif
 
 #include <algorithm>
 #include <deque>
@@ -16,6 +19,8 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+
+#define __asyncws_unused __attribute__((unused))
 
 #if __has_include("ArduinoJson.h")
 #include <ArduinoJson.h>
@@ -34,7 +39,7 @@
 
 #endif  // __has_include("ArduinoJson.h")
 
-#if defined(ESP32) || defined(LIBRETINY)
+#if defined(ESP32) || defined(LIBRETINY) || defined(HOST)
 #include <AsyncTCP.h>
 #include <assert.h>
 #elif defined(ESP8266)
@@ -43,6 +48,14 @@
 #include <RPAsyncTCP.h>
 #else
 #error Platform not supported
+#endif
+
+#if !defined(ASYNCWEBSERVER_USE_MUTEX)
+#if defined(ESP32) || defined(HOST)
+#define ASYNCWEBSERVER_USE_MUTEX 1
+#else
+#define ASYNCWEBSERVER_USE_MUTEX 0
+#endif
 #endif
 
 #include "AsyncWebServerVersion.h"
@@ -240,7 +253,38 @@ constexpr WebRequestMethodComposite HTTP_ANY = HTTP_ALL;
 }  // namespace AsyncWebRequestMethod
 
 // WebRequestMethod string conversion functions
+#if ASYNCWEBSERVER_USE_MUTEX
+#include <mutex>
+#endif
+
 namespace asyncsrv {
+#if ASYNCWEBSERVER_USE_MUTEX
+typedef std::recursive_mutex mutex_type;
+typedef std::lock_guard<mutex_type> lock_guard_type;
+typedef std::unique_lock<mutex_type> unique_lock_type;
+#else
+// Do-nothing locks that will evaporate under optimization
+class null_mutex {
+public:
+  void lock() {}
+  void unlock() {}
+  bool try_lock() {
+    return true;
+  };
+};
+typedef null_mutex mutex_type;
+
+class lock_guard_type {
+public:
+  lock_guard_type(mutex_type &){};
+};
+class unique_lock_type {
+public:
+  unique_lock_type(mutex_type &){};
+  void unlock() {};
+};
+#endif
+
 WebRequestMethod stringToMethod(const String &);
 const char *methodToString(WebRequestMethod);
 }  // namespace asyncsrv
@@ -559,12 +603,12 @@ public:
 #ifndef ESP8266
   [[deprecated("All headers are now collected. Use removeHeader(name) or AsyncHeaderFreeMiddleware if you really need to free some headers.")]]
 #endif
-  void addInterestingHeader(__unused const char *name) {
+  void addInterestingHeader(__asyncws_unused const char *name) {
   }
 #ifndef ESP8266
   [[deprecated("All headers are now collected. Use removeHeader(name) or AsyncHeaderFreeMiddleware if you really need to free some headers.")]]
 #endif
-  void addInterestingHeader(__unused const String &name) {
+  void addInterestingHeader(__asyncws_unused const String &name) {
   }
 
   /**
@@ -670,15 +714,17 @@ public:
 
   AsyncWebServerResponse *
     beginResponse(FS &fs, const String &path, const char *contentType = asyncsrv::empty, bool download = false, AwsTemplateProcessor callback = nullptr);
-  AsyncWebServerResponse *
-    beginResponse(FS &fs, const String &path, const String &contentType = emptyString, bool download = false, AwsTemplateProcessor callback = nullptr) {
+  AsyncWebServerResponse *beginResponse(
+    FS &fs, const String &path, const String &contentType = asyncsrv::emptyString, bool download = false, AwsTemplateProcessor callback = nullptr
+  ) {
     return beginResponse(fs, path, contentType.c_str(), download, callback);
   }
 
   AsyncWebServerResponse *
     beginResponse(File content, const String &path, const char *contentType = asyncsrv::empty, bool download = false, AwsTemplateProcessor callback = nullptr);
-  AsyncWebServerResponse *
-    beginResponse(File content, const String &path, const String &contentType = emptyString, bool download = false, AwsTemplateProcessor callback = nullptr) {
+  AsyncWebServerResponse *beginResponse(
+    File content, const String &path, const String &contentType = asyncsrv::emptyString, bool download = false, AwsTemplateProcessor callback = nullptr
+  ) {
     return beginResponse(content, path, contentType.c_str(), download, callback);
   }
 
@@ -783,11 +829,11 @@ public:
 #endif
   const String &arg(size_t i) const;  // get request argument value by number
   const String &arg(int i) const {
-    return i < 0 ? emptyString : arg((size_t)i);
+    return i < 0 ? asyncsrv::emptyString : arg((size_t)i);
   };
   const String &argName(size_t i) const;  // get request argument name by number
   const String &argName(int i) const {
-    return i < 0 ? emptyString : argName((size_t)i);
+    return i < 0 ? asyncsrv::emptyString : argName((size_t)i);
   };
   bool hasArg(const char *name) const;  // check if argument exists
   bool hasArg(const String &name) const {
@@ -800,14 +846,14 @@ public:
 #ifdef ASYNCWEBSERVER_REGEX
   const String &pathArg(size_t i) const {
     if (i >= _pathParams.size()) {
-      return emptyString;
+      return asyncsrv::emptyString;
     }
     auto it = _pathParams.begin();
     std::advance(it, i);
     return *it;
   }
   const String &pathArg(int i) const {
-    return i < 0 ? emptyString : pathArg((size_t)i);
+    return i < 0 ? asyncsrv::emptyString : pathArg((size_t)i);
   }
 #else
   const String &pathArg(size_t i) const __attribute__((error("ERR: pathArg() requires -D ASYNCWEBSERVER_REGEX and only works on regex handlers")));
@@ -826,11 +872,11 @@ public:
 
   const String &header(size_t i) const;  // get request header value by number
   const String &header(int i) const {
-    return i < 0 ? emptyString : header((size_t)i);
+    return i < 0 ? asyncsrv::emptyString : header((size_t)i);
   };
   const String &headerName(size_t i) const;  // get request header name by number
   const String &headerName(int i) const {
-    return i < 0 ? emptyString : headerName((size_t)i);
+    return i < 0 ? asyncsrv::emptyString : headerName((size_t)i);
   };
 
   size_t headers() const;  // get header count
@@ -888,7 +934,7 @@ public:
     _attributes[name] = value;
   }
   void setAttribute(const char *name, bool value) {
-    _attributes[name] = value ? "1" : emptyString;
+    _attributes[name] = value ? "1" : asyncsrv::emptyString;
   }
   void setAttribute(const char *name, long value) {
     _attributes[name] = String(value);
@@ -904,7 +950,7 @@ public:
     return _attributes.find(name) != _attributes.end();
   }
 
-  const String &getAttribute(const char *name, const String &defaultValue = emptyString) const;
+  const String &getAttribute(const char *name, const String &defaultValue = asyncsrv::emptyString) const;
   bool getAttribute(const char *name, bool defaultValue) const;
   long getAttribute(const char *name, long defaultValue) const;
   float getAttribute(const char *name, float defaultValue) const;
@@ -1165,7 +1211,7 @@ using ArMiddlewareCallback = std::function<void(AsyncWebServerRequest *request, 
 class AsyncMiddleware {
 public:
   virtual ~AsyncMiddleware() {}
-  virtual void run(__unused AsyncWebServerRequest *request, __unused ArMiddlewareNext next) {
+  virtual void run(__asyncws_unused AsyncWebServerRequest *request, __asyncws_unused ArMiddlewareNext next) {
     return next();
   };
 
@@ -1485,12 +1531,15 @@ public:
   virtual bool canHandle(AsyncWebServerRequest *request __attribute__((unused))) const {
     return false;
   }
-  virtual void handleRequest(__unused AsyncWebServerRequest *request) {}
+  virtual void handleRequest(__asyncws_unused AsyncWebServerRequest *request) {}
   virtual void handleUpload(
-    __unused AsyncWebServerRequest *request, __unused const String &filename, __unused size_t index, __unused uint8_t *data, __unused size_t len,
-    __unused bool final
+    __asyncws_unused AsyncWebServerRequest *request, __asyncws_unused const String &filename, __asyncws_unused size_t index, __asyncws_unused uint8_t *data,
+    __asyncws_unused size_t len, __asyncws_unused bool final
   ) {}
-  virtual void handleBody(__unused AsyncWebServerRequest *request, __unused uint8_t *data, __unused size_t len, __unused size_t index, __unused size_t total) {}
+  virtual void handleBody(
+    __asyncws_unused AsyncWebServerRequest *request, __asyncws_unused uint8_t *data, __asyncws_unused size_t len, __asyncws_unused size_t index,
+    __asyncws_unused size_t total
+  ) {}
   virtual bool isRequestHandlerTrivial() const {
     return true;
   }

@@ -37,6 +37,11 @@
 /* wifi kit 32 and WiFi LoRa 32(V1) do not have vext */
 #if defined( WIFI_Kit_32_V3 ) || defined( WIFI_LORA_32_V2 ) || defined( WIFI_LORA_32_V3 )|| defined( WIFI_LORA_32_V4 ) || defined( Class_WIRELESS_STICK ) || defined( WIRELESS_BRIDGE )
 #define Heltec_Vext
+
+/* VEXT polarity for supported ESP32 OLED boards */
+#define VEXT_ON_LEVEL  LOW
+#define VEXT_OFF_LEVEL HIGH
+
 #endif
 
 

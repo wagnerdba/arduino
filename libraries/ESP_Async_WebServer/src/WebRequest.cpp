@@ -298,7 +298,7 @@ void AsyncWebServerRequest::_addGetParams(const String &params) {
       equal = end;
     }
     String name = urlDecode(params.substring(start, equal));
-    String value = urlDecode(equal + 1 < end ? params.substring(equal + 1, end) : emptyString);
+    String value = urlDecode(equal + 1 < end ? params.substring(equal + 1, end) : asyncsrv::emptyString);
     if (name.length()) {
       _params.emplace_back(name, value);
     }
@@ -336,7 +336,7 @@ bool AsyncWebServerRequest::_parseReqHead() {
     _version = 1;
   }
 
-  _temp = emptyString;
+  _temp = asyncsrv::emptyString;
   return true;
 }
 
@@ -543,9 +543,9 @@ bool AsyncWebServerRequest::_parseReqHeader() {
     }
     _headers.emplace_back(std::move(header));
   }
-#if defined(TARGET_RP2040) || defined(TARGET_RP2350) || defined(PICO_RP2040) || defined(PICO_RP2350) || defined(LIBRETINY)
-  // Ancient PRI core does not have String::clear() method 8-()
-  _temp = emptyString;
+#if defined(TARGET_RP2040) || defined(TARGET_RP2350) || defined(PICO_RP2040) || defined(PICO_RP2350) || defined(LIBRETINY) || defined(HOST)
+  // ArduinoCore-API does not have String::clear() method 8-()
+  _temp = asyncsrv::emptyString;
 #else
   _temp.clear();
 #endif
@@ -568,9 +568,9 @@ void AsyncWebServerRequest::_parsePlainPostChar(uint8_t data) {
       _params.emplace_back(name, urlDecode(value), true);
     }
 
-#if defined(TARGET_RP2040) || defined(TARGET_RP2350) || defined(PICO_RP2040) || defined(PICO_RP2350) || defined(LIBRETINY)
-    // Ancient PRI core does not have String::clear() method 8-()
-    _temp = emptyString;
+#if defined(TARGET_RP2040) || defined(TARGET_RP2350) || defined(PICO_RP2040) || defined(PICO_RP2350) || defined(LIBRETINY) || defined(HOST)
+    // ArduinoCore-API does not have String::clear() method 8-()
+    _temp = asyncsrv::emptyString;
 #else
     _temp.clear();
 #endif
@@ -615,10 +615,10 @@ void AsyncWebServerRequest::_parseMultipartPostByte(uint8_t data, bool last) {
 
   if (!_parsedLength) {
     _multiParseState = EXPECT_BOUNDARY;
-    _temp = emptyString;
-    _itemName = emptyString;
-    _itemFilename = emptyString;
-    _itemType = emptyString;
+    _temp = asyncsrv::emptyString;
+    _itemName = asyncsrv::emptyString;
+    _itemFilename = asyncsrv::emptyString;
+    _itemType = asyncsrv::emptyString;
   }
 
   if (_multiParseState == WAIT_FOR_RETURN1) {
@@ -686,13 +686,13 @@ void AsyncWebServerRequest::_parseMultipartPostByte(uint8_t data, bool last) {
             _params.emplace_back(T_filename, _itemFilename, true, true);
           }
         }
-        _temp = emptyString;
+        _temp = asyncsrv::emptyString;
       } else {
         _multiParseState = WAIT_FOR_RETURN1;
         // value starts from here
         _itemSize = 0;
         _itemStartIndex = _parsedLength;
-        _itemValue = emptyString;
+        _itemValue = asyncsrv::emptyString;
         if (_itemIsFile) {
           if (_itemBuffer) {
             free(_itemBuffer);
@@ -1219,7 +1219,7 @@ const String &AsyncWebServerRequest::arg(const char *name) const {
       return arg.value();
     }
   }
-  return emptyString;
+  return asyncsrv::emptyString;
 }
 
 #ifdef ESP8266
@@ -1238,7 +1238,7 @@ const String &AsyncWebServerRequest::argName(size_t i) const {
 
 const String &AsyncWebServerRequest::header(const char *name) const {
   const AsyncWebHeader *h = getHeader(name);
-  return h ? h->value() : emptyString;
+  return h ? h->value() : asyncsrv::emptyString;
 }
 
 #ifdef ESP8266
@@ -1249,12 +1249,12 @@ const String &AsyncWebServerRequest::header(const __FlashStringHelper *data) con
 
 const String &AsyncWebServerRequest::header(size_t i) const {
   const AsyncWebHeader *h = getHeader(i);
-  return h ? h->value() : emptyString;
+  return h ? h->value() : asyncsrv::emptyString;
 }
 
 const String &AsyncWebServerRequest::headerName(size_t i) const {
   const AsyncWebHeader *h = getHeader(i);
-  return h ? h->name() : emptyString;
+  return h ? h->name() : asyncsrv::emptyString;
 }
 
 String AsyncWebServerRequest::urlDecode(const String &text) const {
@@ -1265,7 +1265,7 @@ String AsyncWebServerRequest::urlDecode(const String &text) const {
   // Allocate the string internal buffer - never longer from source text
   if (!decoded.reserve(len)) {
     async_ws_log_e("Failed to allocate");
-    return emptyString;
+    return asyncsrv::emptyString;
   }
   while (i < len) {
     char decodedChar;

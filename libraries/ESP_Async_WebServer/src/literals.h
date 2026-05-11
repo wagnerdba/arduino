@@ -24,6 +24,12 @@
 
 namespace asyncsrv {
 
+#ifdef ARDUINO
+using ::emptyString;
+#else
+inline const String emptyString{};
+#endif
+
 static constexpr const char empty[] = "";
 
 static constexpr const char T__opaque[] = "\", opaque=\"";
