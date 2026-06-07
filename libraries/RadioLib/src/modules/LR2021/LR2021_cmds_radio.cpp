@@ -95,13 +95,15 @@ int16_t LR2021::selPa(uint8_t pa) {
 
 int16_t LR2021::setPaConfig(uint8_t pa, uint8_t paLfMode, uint8_t paLfDutyCycle, uint8_t paLfSlices, uint8_t paHfDutyCycle) {
   uint8_t buff[] = {
-    (uint8_t)(pa << 7), (uint8_t)(paLfMode & 0x03), (uint8_t)(paLfDutyCycle & 0xF0), (uint8_t)(paLfSlices & 0x0F), (uint8_t)(paHfDutyCycle & 0x1F),
+    (uint8_t)((pa << 7) | (paLfMode & 0x03)), 
+    (uint8_t)(((paLfDutyCycle & 0x0F) << 4) | (paLfSlices & 0x0F)),
+    (uint8_t)((paHfDutyCycle & 0x1F)),
   };
   return(this->SPIcommand(RADIOLIB_LR2021_CMD_SET_PA_CONFIG, true, buff, sizeof(buff)));
 }
 
 int16_t LR2021::setTxParams(int8_t txPower, uint8_t rampTime) {
-  uint8_t buff[] = { (uint8_t)(txPower * 2), rampTime };
+  uint8_t buff[] = { (uint8_t)txPower, rampTime };
   return(this->SPIcommand(RADIOLIB_LR2021_CMD_SET_TX_PARAMS, true, buff, sizeof(buff)));
 }
 

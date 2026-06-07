@@ -11,6 +11,76 @@
 // maximum number of allowed frontend calibration attempts
 #define RADIOLIB_LR2021_MAX_CAL_ATTEMPTS    (10)
 
+static const LR2021PaTableEntry_t paOptTableLf[RADIOLIB_LR2021_PA_TABLE_LEN] = {
+  { .paDutyCycle = 1, .paSlices = 1, .paVal = 8 },
+  { .paDutyCycle = 2, .paSlices = 2, .paVal = 1 },
+  { .paDutyCycle = 2, .paSlices = 2, .paVal = 3 },
+  { .paDutyCycle = 2, .paSlices = 2, .paVal = 5 },
+  { .paDutyCycle = 1, .paSlices = 2, .paVal = 13 },
+  { .paDutyCycle = 2, .paSlices = 1, .paVal = 13 },
+  { .paDutyCycle = 2, .paSlices = 2, .paVal = 11 },
+  { .paDutyCycle = 2, .paSlices = 2, .paVal = 13 },
+  { .paDutyCycle = 3, .paSlices = 1, .paVal = 12 },
+  { .paDutyCycle = 1, .paSlices = 1, .paVal = 18 },
+  { .paDutyCycle = 1, .paSlices = 1, .paVal = 20 },
+  { .paDutyCycle = 1, .paSlices = 1, .paVal = 23 },
+  { .paDutyCycle = 1, .paSlices = 1, .paVal = 27 },
+  { .paDutyCycle = 1, .paSlices = 1, .paVal = 33 },
+  { .paDutyCycle = 1, .paSlices = 2, .paVal = 26 },
+  { .paDutyCycle = 1, .paSlices = 2, .paVal = 31 },
+  { .paDutyCycle = 1, .paSlices = 3, .paVal = 27 },
+  { .paDutyCycle = 1, .paSlices = 1, .paVal = 37 },
+  { .paDutyCycle = 1, .paSlices = 2, .paVal = 40 },
+  { .paDutyCycle = 2, .paSlices = 1, .paVal = 38 },
+  { .paDutyCycle = 2, .paSlices = 2, .paVal = 39 },
+  { .paDutyCycle = 2, .paSlices = 4, .paVal = 40 },
+  { .paDutyCycle = 2, .paSlices = 7, .paVal = 41 },
+  { .paDutyCycle = 3, .paSlices = 2, .paVal = 39 },
+  { .paDutyCycle = 3, .paSlices = 3, .paVal = 39 },
+  { .paDutyCycle = 3, .paSlices = 6, .paVal = 38 },
+  { .paDutyCycle = 4, .paSlices = 3, .paVal = 37 },
+  { .paDutyCycle = 4, .paSlices = 5, .paVal = 37 },
+  { .paDutyCycle = 4, .paSlices = 7, .paVal = 38 },
+  { .paDutyCycle = 5, .paSlices = 3, .paVal = 37 },
+  { .paDutyCycle = 5, .paSlices = 6, .paVal = 37 },
+  { .paDutyCycle = 6, .paSlices = 7, .paVal = 35 },
+};
+
+static const LR2021PaTableEntry_t paOptTableHf[RADIOLIB_LR2021_PA_TABLE_LEN] = {
+  { .paDutyCycle = 0, .paSlices = RADIOLIB_LR2021_PA_LF_SLICES_UNUSED, .paVal = -38 }, // -19
+  { .paDutyCycle = 0, .paSlices = RADIOLIB_LR2021_PA_LF_SLICES_UNUSED, .paVal = -36 }, // -18
+  { .paDutyCycle = 0, .paSlices = RADIOLIB_LR2021_PA_LF_SLICES_UNUSED, .paVal = -34 }, // -17
+  { .paDutyCycle = 0, .paSlices = RADIOLIB_LR2021_PA_LF_SLICES_UNUSED, .paVal = -32 }, // -16
+  { .paDutyCycle = 0, .paSlices = RADIOLIB_LR2021_PA_LF_SLICES_UNUSED, .paVal = -30 }, // -15
+  { .paDutyCycle = 0, .paSlices = RADIOLIB_LR2021_PA_LF_SLICES_UNUSED, .paVal = -28 }, // -14
+  { .paDutyCycle = 0, .paSlices = RADIOLIB_LR2021_PA_LF_SLICES_UNUSED, .paVal = -26 }, // -13
+  { .paDutyCycle = 0, .paSlices = RADIOLIB_LR2021_PA_LF_SLICES_UNUSED, .paVal = -24 }, // -12
+  { .paDutyCycle = 0, .paSlices = RADIOLIB_LR2021_PA_LF_SLICES_UNUSED, .paVal = -22 }, // -11
+  { .paDutyCycle = 0, .paSlices = RADIOLIB_LR2021_PA_LF_SLICES_UNUSED, .paVal = -20 }, // -10
+  { .paDutyCycle = 0, .paSlices = RADIOLIB_LR2021_PA_LF_SLICES_UNUSED, .paVal = -18 }, // -9
+  { .paDutyCycle = 0, .paSlices = RADIOLIB_LR2021_PA_LF_SLICES_UNUSED, .paVal = -16 }, // -8
+  { .paDutyCycle = 0, .paSlices = RADIOLIB_LR2021_PA_LF_SLICES_UNUSED, .paVal = -14 }, // -7
+  { .paDutyCycle = 0, .paSlices = RADIOLIB_LR2021_PA_LF_SLICES_UNUSED, .paVal = -12 }, // -6
+  { .paDutyCycle = 0, .paSlices = RADIOLIB_LR2021_PA_LF_SLICES_UNUSED, .paVal = -10 }, // -5
+  { .paDutyCycle = 0, .paSlices = RADIOLIB_LR2021_PA_LF_SLICES_UNUSED, .paVal = -8 },  // -4
+  { .paDutyCycle = 0, .paSlices = RADIOLIB_LR2021_PA_LF_SLICES_UNUSED, .paVal = -6 },  // -3
+  { .paDutyCycle = 0, .paSlices = RADIOLIB_LR2021_PA_LF_SLICES_UNUSED, .paVal = -4 },  // -2
+  { .paDutyCycle = 0, .paSlices = RADIOLIB_LR2021_PA_LF_SLICES_UNUSED, .paVal = -2 },  // -1
+  { .paDutyCycle = 14, .paSlices = RADIOLIB_LR2021_PA_LF_SLICES_UNUSED, .paVal = 4 },  // 0
+  { .paDutyCycle = 14, .paSlices = RADIOLIB_LR2021_PA_LF_SLICES_UNUSED, .paVal = 6 },  // 1
+  { .paDutyCycle = 12, .paSlices = RADIOLIB_LR2021_PA_LF_SLICES_UNUSED, .paVal = 7 },  // 2
+  { .paDutyCycle = 9, .paSlices = RADIOLIB_LR2021_PA_LF_SLICES_UNUSED, .paVal = 8 },  // 3
+  { .paDutyCycle = 9, .paSlices = RADIOLIB_LR2021_PA_LF_SLICES_UNUSED, .paVal = 10 },  // 4
+  { .paDutyCycle = 15, .paSlices = RADIOLIB_LR2021_PA_LF_SLICES_UNUSED, .paVal = 15 },  // 5
+  { .paDutyCycle = 14, .paSlices = RADIOLIB_LR2021_PA_LF_SLICES_UNUSED, .paVal = 16 },  // 6
+  { .paDutyCycle = 14, .paSlices = RADIOLIB_LR2021_PA_LF_SLICES_UNUSED, .paVal = 18 },  // 7
+  { .paDutyCycle = 15, .paSlices = RADIOLIB_LR2021_PA_LF_SLICES_UNUSED, .paVal = 21 },  // 8
+  { .paDutyCycle = 14, .paSlices = RADIOLIB_LR2021_PA_LF_SLICES_UNUSED, .paVal = 22 },  // 9
+  { .paDutyCycle = 14, .paSlices = RADIOLIB_LR2021_PA_LF_SLICES_UNUSED, .paVal = 24 },  // 10
+  { .paDutyCycle = 10, .paSlices = RADIOLIB_LR2021_PA_LF_SLICES_UNUSED, .paVal = 24 },  // 11
+  { .paDutyCycle = 0, .paSlices = RADIOLIB_LR2021_PA_LF_SLICES_UNUSED, .paVal = 24 },  // 12
+};
+
 int16_t LR2021::setFrequency(float freq) {
   return(this->setFrequency(freq, false));
 }
@@ -81,18 +151,32 @@ int16_t LR2021::setOutputPower(int8_t power, uint32_t rampTimeUs) {
   RADIOLIB_ASSERT(state);
   
   //! \TODO: [LR2021] how and when to configure OCP?
-  //! \TODO: [LR2021] Determine the optimal PA configuration
+
+  // poitners to default tables
+  LR2021PaTableEntry_t* defaultTables[] = { 
+    const_cast<LR2021PaTableEntry_t*>(paOptTableLf),
+    const_cast<LR2021PaTableEntry_t*>(paOptTableHf),
+  };
+
+  // if the user pointers are not set, use the appropriate (LF/HF) default table
+  LR2021PaTableEntry_t* table = this->paOptTable[this->highFreq] ? this->paOptTable[this->highFreq] : defaultTables[this->highFreq];
+  
   // update PA config
+  const LR2021PaTableEntry_t* paCfg = this->highFreq ? &table[power + 19] : &table[power + 9];
   state = setPaConfig(this->highFreq, 
     RADIOLIB_LR2021_PA_LF_MODE_FSM, 
-    RADIOLIB_LR2021_PA_LF_DUTY_CYCLE_UNUSED, 
-    RADIOLIB_LR2021_PA_LF_SLICES_UNUSED, 
-    RADIOLIB_LR2021_PA_HF_DUTY_CYCLE_UNUSED);
+    this->highFreq ? RADIOLIB_LR2021_PA_LF_DUTY_CYCLE_UNUSED : paCfg->paDutyCycle, 
+    paCfg->paSlices, 
+    this->highFreq ? (paCfg->paDutyCycle + RADIOLIB_LR2021_PA_HF_DUTY_CYCLE_UNUSED) : RADIOLIB_LR2021_PA_HF_DUTY_CYCLE_UNUSED);
   RADIOLIB_ASSERT(state);
 
   // set output power
-  state = setTxParams(power, roundRampTime(rampTimeUs));
+  state = setTxParams(paCfg->paVal, roundRampTime(rampTimeUs));
   return(state);
+}
+
+void LR2021::setPaTable(LR2021PaTableEntry_t* table, bool highFreq) {
+  this->paOptTable[highFreq] = table;
 }
 
 int16_t LR2021::checkOutputPower(int8_t power, int8_t* clipped) {
@@ -210,10 +294,14 @@ int16_t LR2021::setSpreadingFactor(uint8_t sf, bool legacy) {
 
   RADIOLIB_CHECK_RANGE(sf, 5, 12, RADIOLIB_ERR_INVALID_SPREADING_FACTOR);
 
-  //! \TODO: [LR2021] enable SF6 legacy mode
   if(legacy && (sf == 6)) {
-    //this->mod->SPIsetRegValue(RADIOLIB_LR11X0_REG_SF6_SX127X_COMPAT, RADIOLIB_LR11X0_SF6_SX127X, 18, 18);
+    // enable SF6 legacy mode if requested
+    state = this->writeRegMemMask32(RADIOLIB_LR2021_REG_LORA_MODEM_TXRX_CFG0, (3UL << 18), (1UL << 19));
+  } else {
+    // disable it in all other cases
+    state = this->writeRegMemMask32(RADIOLIB_LR2021_REG_LORA_MODEM_TXRX_CFG0, (3UL << 18), 0);
   }
+  RADIOLIB_ASSERT(state);
 
   // update modulation parameters
   this->spreadingFactor = sf;
@@ -285,24 +373,28 @@ int16_t LR2021::setPreambleLength(size_t preambleLength) {
   RADIOLIB_ASSERT(state);
   if(type == RADIOLIB_LR2021_PACKET_TYPE_LORA) {
     this->preambleLengthLoRa = preambleLength;
-    return(setLoRaPacketParams(this->preambleLengthLoRa, this->headerType, this->implicitLen, this->crcTypeLoRa, (uint8_t)this->invertIQEnabled));
+    return(setLoRaPacketParams(this->preambleLengthLoRa, this->headerType, 
+      (this->headerType == RADIOLIB_LR2021_LORA_HEADER_IMPLICIT) ? this->implicitLen : RADIOLIB_LR2021_MAX_PACKET_LENGTH, this->crcTypeLoRa, (uint8_t)this->invertIQEnabled));
   
   } else if(type == RADIOLIB_LR2021_PACKET_TYPE_GFSK) {
     this->preambleLengthGFSK = preambleLength;
     this->preambleDetLength = (preambleLength / 8) << 3;
-    return(setGfskPacketParams(this->preambleLengthGFSK, this->preambleDetLength, false, false, this->addrComp, this->packetType, RADIOLIB_LR2021_MAX_PACKET_LENGTH, this->crcTypeGFSK, this->whitening));
+    return(setGfskPacketParams(this->preambleLengthGFSK, this->preambleDetLength, false, false, this->addrComp, this->packetType, 
+      (this->packetType == RADIOLIB_LR2021_GFSK_OOK_PACKET_FORMAT_FIXED) ? this->implicitLen : RADIOLIB_LR2021_MAX_PACKET_LENGTH, this->crcTypeGFSK, this->whitening));
   
   } else if(type == RADIOLIB_LR2021_PACKET_TYPE_OOK) {
     this->preambleLengthGFSK = preambleLength;
     this->preambleDetLength = (preambleLength / 8) << 3;
-    return(setOokPacketParams(this->preambleLengthGFSK, this->addrComp, this->packetType, RADIOLIB_LR2021_MAX_PACKET_LENGTH, this->crcTypeGFSK, this->whitening));
+    return(setOokPacketParams(this->preambleLengthGFSK, this->addrComp, this->packetType, 
+      (this->packetType == RADIOLIB_LR2021_GFSK_OOK_PACKET_FORMAT_FIXED) ? this->implicitLen : RADIOLIB_LR2021_MAX_PACKET_LENGTH, this->crcTypeGFSK, this->whitening));
     
   } else if(type == RADIOLIB_LR2021_PACKET_TYPE_FLRC) {
     if((preambleLength % 4) != 0) {
       return(RADIOLIB_ERR_INVALID_PREAMBLE_LENGTH);
     }
     this->preambleLengthGFSK = (preambleLength / 4) - 1;
-    return(setFlrcPacketParams(this->preambleLengthGFSK, this->syncWordLength, 1, 0x01, this->packetType == RADIOLIB_LR2021_GFSK_OOK_PACKET_FORMAT_FIXED, this->crcLenGFSK, RADIOLIB_LR2021_MAX_PACKET_LENGTH));
+    return(setFlrcPacketParams(this->preambleLengthGFSK, this->syncWordLength, 1, 0x01, this->packetType == RADIOLIB_LR2021_GFSK_OOK_PACKET_FORMAT_FIXED, this->crcLenGFSK, 
+      (this->packetType == RADIOLIB_LR2021_GFSK_OOK_PACKET_FORMAT_FIXED) ? this->implicitLen : RADIOLIB_LR2021_MAX_PACKET_LENGTH));
 
   }
 
@@ -310,11 +402,6 @@ int16_t LR2021::setPreambleLength(size_t preambleLength) {
 }
 
 int16_t LR2021::setTCXO(float voltage, uint32_t delay) {
-  // check if TCXO is enabled at all
-  if(this->XTAL) {
-    return(RADIOLIB_ERR_INVALID_TCXO_VOLTAGE);
-  }
-
   // set mode to standby
   standby();
 
@@ -371,8 +458,9 @@ int16_t LR2021::setCRC(uint8_t len, uint32_t initial, uint32_t polynomial, bool 
   RADIOLIB_ASSERT(state);
   if(type == RADIOLIB_LR2021_PACKET_TYPE_LORA) {
     // LoRa CRC doesn't allow to set CRC polynomial, initial value, or inversion
-    this->crcTypeLoRa = len > 0;
-    return(setLoRaPacketParams(this->preambleLengthLoRa, this->headerType, this->implicitLen, this->crcTypeLoRa, (uint8_t)this->invertIQEnabled));
+    this->crcTypeLoRa = len > 0 ? RADIOLIB_LR2021_LORA_CRC_ENABLED : RADIOLIB_LR2021_LORA_CRC_DISABLED;
+    return(setLoRaPacketParams(this->preambleLengthLoRa, this->headerType, 
+      (this->headerType == RADIOLIB_LR2021_LORA_HEADER_IMPLICIT) ? this->implicitLen : RADIOLIB_LR2021_MAX_PACKET_LENGTH, this->crcTypeLoRa, (uint8_t)this->invertIQEnabled));
   
   } else if(type == RADIOLIB_LR2021_PACKET_TYPE_GFSK) {
     if(len > 4) {
@@ -384,7 +472,8 @@ int16_t LR2021::setCRC(uint8_t len, uint32_t initial, uint32_t polynomial, bool 
       this->crcTypeGFSK += 0x08;
     }
 
-    state = setGfskPacketParams(this->preambleLengthGFSK, this->preambleDetLength, false, false, this->addrComp, this->packetType, RADIOLIB_LR2021_MAX_PACKET_LENGTH, this->crcTypeGFSK, this->whitening);
+    state = setGfskPacketParams(this->preambleLengthGFSK, this->preambleDetLength, false, false, this->addrComp, this->packetType, 
+      (this->packetType == RADIOLIB_LR2021_GFSK_OOK_PACKET_FORMAT_FIXED) ? this->implicitLen : RADIOLIB_LR2021_MAX_PACKET_LENGTH, this->crcTypeGFSK, this->whitening);
     RADIOLIB_ASSERT(state);
 
     return(setGfskCrcParams(polynomial, initial));
@@ -399,7 +488,8 @@ int16_t LR2021::setCRC(uint8_t len, uint32_t initial, uint32_t polynomial, bool 
       this->crcTypeGFSK += 0x08;
     }
 
-    state = setOokPacketParams(this->preambleLengthGFSK, this->addrComp, this->packetType, RADIOLIB_LR2021_MAX_PACKET_LENGTH, this->crcTypeGFSK, this->whitening);
+    state = setOokPacketParams(this->preambleLengthGFSK, this->addrComp, this->packetType, 
+      (this->packetType == RADIOLIB_LR2021_GFSK_OOK_PACKET_FORMAT_FIXED) ? this->implicitLen : RADIOLIB_LR2021_MAX_PACKET_LENGTH, this->crcTypeGFSK, this->whitening);
     RADIOLIB_ASSERT(state);
 
     return(setOokCrcParams(polynomial, initial));
@@ -410,7 +500,8 @@ int16_t LR2021::setCRC(uint8_t len, uint32_t initial, uint32_t polynomial, bool 
     }
     
     this->crcLenGFSK = len ? len - 1 : 0;
-    return(setFlrcPacketParams(this->preambleLengthGFSK, this->syncWordLength, 1, 0x01, this->packetType == RADIOLIB_LR2021_GFSK_OOK_PACKET_FORMAT_FIXED, this->crcLenGFSK, RADIOLIB_LR2021_MAX_PACKET_LENGTH));
+    return(setFlrcPacketParams(this->preambleLengthGFSK, this->syncWordLength, 1, 0x01, this->packetType == RADIOLIB_LR2021_GFSK_OOK_PACKET_FORMAT_FIXED, this->crcLenGFSK, 
+      (this->packetType == RADIOLIB_LR2021_GFSK_OOK_PACKET_FORMAT_FIXED) ? this->implicitLen : RADIOLIB_LR2021_MAX_PACKET_LENGTH));
       
   }
 
@@ -427,7 +518,8 @@ int16_t LR2021::invertIQ(bool enable) {
   }
 
   this->invertIQEnabled = enable;
-  return(setLoRaPacketParams(this->preambleLengthLoRa, this->headerType, this->implicitLen, this->crcTypeLoRa, (uint8_t)this->invertIQEnabled));
+  return(setLoRaPacketParams(this->preambleLengthLoRa, this->headerType, 
+    (this->headerType == RADIOLIB_LR2021_LORA_HEADER_IMPLICIT) ? this->implicitLen : RADIOLIB_LR2021_MAX_PACKET_LENGTH, this->crcTypeLoRa, (uint8_t)this->invertIQEnabled));
 }
 
 int16_t LR2021::setBitRate(float br) {
@@ -599,7 +691,8 @@ int16_t LR2021::setSyncWord(uint8_t* syncWord, size_t len) {
 
       // update sync word length
       this->syncWordLength = len;
-      state = setFlrcPacketParams(this->preambleLengthGFSK, this->syncWordLength, 1, 0x01, this->packetType == RADIOLIB_LR2021_GFSK_OOK_PACKET_FORMAT_FIXED, this->crcLenGFSK, RADIOLIB_LR2021_MAX_PACKET_LENGTH);
+      state = setFlrcPacketParams(this->preambleLengthGFSK, this->syncWordLength, 1, 0x01, this->packetType == RADIOLIB_LR2021_GFSK_OOK_PACKET_FORMAT_FIXED, this->crcLenGFSK, 
+        (this->packetType == RADIOLIB_LR2021_GFSK_OOK_PACKET_FORMAT_FIXED) ? this->implicitLen : RADIOLIB_LR2021_MAX_PACKET_LENGTH);
       RADIOLIB_ASSERT(state);
 
       sync |= (uint32_t)syncWord[0] << 24;
@@ -670,13 +763,15 @@ int16_t LR2021::setEncoding(uint8_t encoding) {
           state = setWhitening(false);
           RADIOLIB_ASSERT(state);
           this->whitening = RADIOLIB_LR2021_OOK_MANCHESTER_ON;
-          return(setOokPacketParams(this->preambleLengthGFSK, this->addrComp, this->packetType, RADIOLIB_LR2021_MAX_PACKET_LENGTH, this->crcTypeGFSK, this->whitening));
+          return(setOokPacketParams(this->preambleLengthGFSK, this->addrComp, this->packetType, 
+            (this->packetType == RADIOLIB_LR2021_GFSK_OOK_PACKET_FORMAT_FIXED) ? this->implicitLen : RADIOLIB_LR2021_MAX_PACKET_LENGTH, this->crcTypeGFSK, this->whitening));
         
         case(RADIOLIB_ENCODING_MANCHESTER_INV):
           state = setWhitening(false);
           RADIOLIB_ASSERT(state);
           this->whitening = RADIOLIB_LR2021_OOK_MANCHESTER_ON_INV;
-          return(setOokPacketParams(this->preambleLengthGFSK, this->addrComp, this->packetType, RADIOLIB_LR2021_MAX_PACKET_LENGTH, this->crcTypeGFSK, this->whitening));
+          return(setOokPacketParams(this->preambleLengthGFSK, this->addrComp, this->packetType, 
+            (this->packetType == RADIOLIB_LR2021_GFSK_OOK_PACKET_FORMAT_FIXED) ? this->implicitLen : RADIOLIB_LR2021_MAX_PACKET_LENGTH, this->crcTypeGFSK, this->whitening));
         
         default:
           return(RADIOLIB_ERR_INVALID_ENCODING);
@@ -711,7 +806,8 @@ int16_t LR2021::setWhitening(bool enabled, uint16_t initial) {
         RADIOLIB_ASSERT(state);
       }
       this->whitening = enabled;
-      return(setGfskPacketParams(this->preambleLengthGFSK, this->preambleDetLength, false, false, this->addrComp, this->packetType, RADIOLIB_LR2021_MAX_PACKET_LENGTH, this->crcTypeGFSK, this->whitening));
+      return(setGfskPacketParams(this->preambleLengthGFSK, this->preambleDetLength, false, false, this->addrComp, this->packetType, 
+        (this->packetType == RADIOLIB_LR2021_GFSK_OOK_PACKET_FORMAT_FIXED) ? this->implicitLen : RADIOLIB_LR2021_MAX_PACKET_LENGTH, this->crcTypeGFSK, this->whitening));
     
     case(RADIOLIB_LR2021_PACKET_TYPE_OOK):
       this->whitening = enabled;
@@ -722,7 +818,8 @@ int16_t LR2021::setWhitening(bool enabled, uint16_t initial) {
         state = setOokWhiteningParams(0, 0, 0);
       }
       RADIOLIB_ASSERT(state);
-      return(setOokPacketParams(this->preambleLengthGFSK, this->addrComp, this->packetType, RADIOLIB_LR2021_MAX_PACKET_LENGTH, this->crcTypeGFSK, this->whitening));
+      return(setOokPacketParams(this->preambleLengthGFSK, this->addrComp, this->packetType, 
+        (this->packetType == RADIOLIB_LR2021_GFSK_OOK_PACKET_FORMAT_FIXED) ? this->implicitLen : RADIOLIB_LR2021_MAX_PACKET_LENGTH, this->crcTypeGFSK, this->whitening));
   }
 
   return(RADIOLIB_ERR_WRONG_MODEM);
@@ -828,14 +925,12 @@ int16_t LR2021::setLrFhssConfig(uint8_t bw, uint8_t cr, uint8_t hdrCount, uint16
 }
 
 int16_t LR2021::setRxBoostedGainMode(uint8_t level) {
-  int16_t state = this->setRxPath(this->highFreq ? RADIOLIB_LR2021_RX_PATH_HF : RADIOLIB_LR2021_RX_PATH_LF, this->highFreq ? this->gainModeHf : this->gainModeLf);
-  RADIOLIB_ASSERT(state);
   if(this->highFreq) {
     this->gainModeHf = level;
   } else {
     this->gainModeLf = level;
   }
-  return(state);
+  return(this->setRxPath(this->highFreq ? RADIOLIB_LR2021_RX_PATH_HF : RADIOLIB_LR2021_RX_PATH_LF, this->highFreq ? this->gainModeHf : this->gainModeLf));
 }
 
 int16_t LR2021::setPacketMode(uint8_t mode, uint8_t len) {
@@ -850,6 +945,7 @@ int16_t LR2021::setPacketMode(uint8_t mode, uint8_t len) {
 
     // update cached value
     this->packetType = mode;
+    this->implicitLen = len;
     return(state);
   
   } else if(type == RADIOLIB_LR2021_PACKET_TYPE_OOK) {
@@ -859,6 +955,7 @@ int16_t LR2021::setPacketMode(uint8_t mode, uint8_t len) {
 
     // update cached value
     this->packetType = mode;
+    this->implicitLen = len;
     return(state);
   
   } else if(type == RADIOLIB_LR2021_PACKET_TYPE_FLRC) {
@@ -866,6 +963,7 @@ int16_t LR2021::setPacketMode(uint8_t mode, uint8_t len) {
     RADIOLIB_ASSERT(state);
 
     this->packetType = mode;
+    this->implicitLen = len;
     return(state);
   
   }
@@ -911,7 +1009,8 @@ int16_t LR2021::setNodeAddress(uint8_t nodeAddr) {
 
   // enable address filtering (node only)
   this->addrComp = RADIOLIB_LR2021_GFSK_OOK_ADDR_FILT_NODE;
-  state = setGfskPacketParams(this->preambleLengthGFSK, this->preambleDetLength, false, false, this->addrComp, this->packetType, RADIOLIB_LR2021_MAX_PACKET_LENGTH, this->crcTypeGFSK, this->whitening);
+  state = setGfskPacketParams(this->preambleLengthGFSK, this->preambleDetLength, false, false, this->addrComp, this->packetType, 
+    (this->packetType == RADIOLIB_LR2021_GFSK_OOK_PACKET_FORMAT_FIXED) ? this->implicitLen : RADIOLIB_LR2021_MAX_PACKET_LENGTH, this->crcTypeGFSK, this->whitening);
   RADIOLIB_ASSERT(state);
 
   // set node address
@@ -930,7 +1029,8 @@ int16_t LR2021::setBroadcastAddress(uint8_t broadAddr) {
 
   // enable address filtering (node and broadcast)
   this->addrComp = RADIOLIB_LR2021_GFSK_OOK_ADDR_FILT_NODE_BROADCAST;
-  state = setGfskPacketParams(this->preambleLengthGFSK, this->preambleDetLength, false, false, this->addrComp, this->packetType, RADIOLIB_LR2021_MAX_PACKET_LENGTH, this->crcTypeGFSK, this->whitening);
+  state = setGfskPacketParams(this->preambleLengthGFSK, this->preambleDetLength, false, false, this->addrComp, this->packetType, 
+    (this->packetType == RADIOLIB_LR2021_GFSK_OOK_PACKET_FORMAT_FIXED) ? this->implicitLen : RADIOLIB_LR2021_MAX_PACKET_LENGTH, this->crcTypeGFSK, this->whitening);
   RADIOLIB_ASSERT(state);
 
   // set node and broadcast address
@@ -948,7 +1048,8 @@ int16_t LR2021::disableAddressFiltering() {
 
   // disable address filtering
   this->addrComp = RADIOLIB_LR2021_GFSK_OOK_ADDR_FILT_DISABLED;
-  return(setGfskPacketParams(this->preambleLengthGFSK, this->preambleDetLength, false, false, this->addrComp, this->packetType, RADIOLIB_LR2021_MAX_PACKET_LENGTH, this->crcTypeGFSK, this->whitening));
+  return(setGfskPacketParams(this->preambleLengthGFSK, this->preambleDetLength, false, false, this->addrComp, this->packetType, 
+    (this->packetType == RADIOLIB_LR2021_GFSK_OOK_PACKET_FORMAT_FIXED) ? this->implicitLen : RADIOLIB_LR2021_MAX_PACKET_LENGTH, this->crcTypeGFSK, this->whitening));
 }
 
 int16_t LR2021::ookDetector(uint16_t pattern, uint8_t len, uint8_t repeats, bool syncRaw, bool rising, uint8_t sofLen) {
@@ -994,6 +1095,7 @@ int16_t LR2021::setSideDetector(const LR2021LoRaSideDetector_t* cfg, size_t numD
   uint8_t detectors[3] = { 0 };
   uint8_t syncWords[3] = { 0 };
   uint8_t minSf = this->spreadingFactor;
+  uint32_t sumDetFactors = 0;
   for(size_t i = 0; i < numDetectors; i++) {
     // all side-detector spreading factors must be higher than the primary one
     //! \todo [LR2021] implement multi-SF for CAD (main SF must be smallest!)
@@ -1010,6 +1112,12 @@ int16_t LR2021::setSideDetector(const LR2021LoRaSideDetector_t* cfg, size_t numD
 
     detectors[i] = cfg[i].sf << 4 | cfg[i].ldro << 2 | cfg[i].invertIQ;
     syncWords[i] = cfg[i].syncWord;
+    sumDetFactors += 10 + (((cfg[i].sf - 5) >> 1) << 1);
+  }
+
+  // sum of detection factors multiplied by BW must be smaller than 32E6
+  if(sumDetFactors*(uint32_t)this->bandwidthKhz >= 32000UL) {
+    return(RADIOLIB_ERR_INVALID_SIDE_DETECT);
   }
 
   // all spreading factors must be different

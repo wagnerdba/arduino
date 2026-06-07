@@ -50,7 +50,7 @@ int16_t APRSClient::sendPosition(char* destCallsign, uint8_t destSSID, const cha
   #if !RADIOLIB_STATIC_ONLY
     char* info = new char[len + 2];
   #else
-    char info[RADIOLIB_STATIC_ARRAY_SIZE];
+    char info[RADIOLIB_STATIC_ARRAY_SIZE + 2];
   #endif
 
   // build the info field

@@ -52,6 +52,7 @@
 #define RADIOLIB_LR2021_CMD_CONFIG_LF_CLOCK                     (0x0118)
 #define RADIOLIB_LR2021_CMD_CONFIG_CLK_OUTPUTS                  (0x0119)
 #define RADIOLIB_LR2021_CMD_SET_TCXO_MODE                       (0x0120)
+#define RADIOLIB_LR2021_CMD_ACTIVATE_PRAM                       (0x012D)
 #define RADIOLIB_LR2021_CMD_SET_XOSC_CP_TRIM                    (0x0131)
 #define RADIOLIB_LR2021_CMD_SET_RF_FREQUENCY                    (0x0200)
 #define RADIOLIB_LR2021_CMD_SET_RX_PATH                         (0x0201)
@@ -344,8 +345,9 @@
 #define RADIOLIB_LR2021_PA_HIGH_POWER                           (0x01UL << 0)   //  1     0                high-power
 
 // RADIOLIB_LR2021_CMD_SET_PA_CONFIG
+#define RADIOLIB_LR2021_PA_TABLE_LEN                            (32)
 #define RADIOLIB_LR2021_PA_LF_MODE_FSM                          (0x00UL << 0)   //  1     0     PA LF mode: full single-ended mode
-#define RADIOLIB_LR2021_PA_LF_DUTY_CYCLE_UNUSED                 (0x06UL << 4)   //  7     4     PA LF duty cycle: PA not used
+#define RADIOLIB_LR2021_PA_LF_DUTY_CYCLE_UNUSED                 (0x06UL << 0)   //  7     4     PA LF duty cycle: PA not used
 #define RADIOLIB_LR2021_PA_LF_SLICES_UNUSED                     (0x07UL << 0)   //  3     0     PA LF slices: PA not used
 #define RADIOLIB_LR2021_PA_HF_DUTY_CYCLE_UNUSED                 (0x10UL << 0)   //  4     0     PA HF duty cycle: PA not used
 
@@ -403,6 +405,10 @@
 // RADIOLIB_LR2021_CMD_SET_LORA_SYNCWORD
 #define RADIOLIB_LR2021_LORA_SYNC_WORD_PRIVATE                  (0x12UL << 0)   //  7     0     LoRa sync word: 0x12 (private networks)
 #define RADIOLIB_LR2021_LORA_SYNC_WORD_LORAWAN                  (0x34UL << 0)   //  7     0                     0x34 (LoRaWAN reserved)
+
+// RADIOLIB_LR2021_CMD_SET_LORA_CAD_PARAMS
+#define RADIOLIB_LR2021_LORA_CAD_PNR_DELTA_STANDARD             (0x00UL << 0)   //  7     0     LoRa CAD speed: normal
+#define RADIOLIB_LR2021_LORA_CAD_PNR_DELTA_FAST                 (0x08UL << 0)   //  7     0                     fast CAD
 
 // RADIOLIB_LR2021_CMD_SET_LORA_HOPPING
 #define RADIOLIB_LR2021_LORA_HOPPING_DISABLED                   (0x00UL << 6)   //  7     6     LoRa intra-packet hopping: disabled
@@ -515,6 +521,9 @@
 #define RADIOLIB_LR2021_OOK_MANCHESTER_OFF                      (0x00UL << 0)   //  3     0     Manchester encoding: disabled
 #define RADIOLIB_LR2021_OOK_MANCHESTER_ON                       (0x01UL << 0)   //  3     0                          enabled
 #define RADIOLIB_LR2021_OOK_MANCHESTER_ON_INV                   (0x09UL << 0)   //  3     0                          enabled, inverted
+
+// RADIOLIB_LR2021_CMD_SET_OOK_SYNCWORD
+#define RADIOLIB_LR2021_OOK_SYNC_WORD_LEN                       (4)
 
 // RADIOLIB_LR2021_CMD_SET_TX_TEST_MODE
 #define RADIOLIB_LR2021_TX_TEST_MODE_NORMAL_TX                  (0x00UL << 0)   //  7     0     Tx test mode: normal

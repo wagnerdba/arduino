@@ -37,9 +37,14 @@ int16_t LR2021::setOokCrcParams(uint32_t poly, uint32_t init) {
 }
 
 int16_t LR2021::setOokSyncword(const uint8_t* syncWord, size_t syncWordLen, bool msbFirst) {
+  // OOK maximum sync word length is just 32-bits, unlike GFSK
+  if(syncWordLen > RADIOLIB_LR2021_OOK_SYNC_WORD_LEN) {
+    return(RADIOLIB_ERR_INVALID_SYNC_WORD);
+  }
+
   uint8_t buff[5] = { 0 };
-  for(size_t i = 0; i < syncWordLen; i++) {
-    buff[3 - i] = syncWord[i];
+  for(int8_t i = 3; i >= (int8_t) (RADIOLIB_LR2021_OOK_SYNC_WORD_LEN - syncWordLen); i--) {
+    buff[i] = syncWord[i - (int8_t) (RADIOLIB_LR2021_OOK_SYNC_WORD_LEN - syncWordLen)];
   }
   buff[4] = (uint8_t)msbFirst << 7 | ((syncWordLen*8) & 0x7F);
   return(this->SPIcommand(RADIOLIB_LR2021_CMD_SET_OOK_SYNCWORD, true, buff, sizeof(buff)));
@@ -59,7 +64,7 @@ int16_t LR2021::getOokRxStats(uint16_t* packetRx, uint16_t* crcError, uint16_t* 
   return(state);
 }
 
-int16_t LR2021::getOokPacketStatus(uint16_t* packetLen, float* rssiAvg, float* rssiSync, bool* addrMatchNode, bool* addrMatchBroadcast, float* lqi) {
+int16_t LR2021::getOokPacketStatus(uint16_t* packetLen, float* rssiAvg, float* rssiHigh, bool* addrMatchNode, bool* addrMatchBroadcast, float* lqi) {
   uint8_t buff[6] = { 0 };
   int16_t state = this->SPIcommand(RADIOLIB_LR2021_CMD_GET_OOK_PACKET_STATUS, false, buff, sizeof(buff));
   uint16_t raw;
@@ -69,10 +74,10 @@ int16_t LR2021::getOokPacketStatus(uint16_t* packetLen, float* rssiAvg, float* r
     raw |= (buff[4] & 0x04) >> 2;
     *rssiAvg = (float)raw / -2.0f;
   }
-  if(rssiSync) {
+  if(rssiHigh) {
     raw = (uint16_t)buff[3] << 1;
     raw |= (buff[4] & 0x01);
-    *rssiSync = (float)raw / -2.0f;
+    *rssiHigh = (float)raw / -2.0f;
   }
   if(addrMatchNode) { *addrMatchNode = (buff[4] & 0x10); }
   if(addrMatchBroadcast) { *addrMatchBroadcast = (buff[4] & 0x20); }

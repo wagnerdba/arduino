@@ -2,11 +2,13 @@
 
 set -e
 
+args=$1
+
 # build the test binary
 rm -rf build
 mkdir build
 cd build
-cmake -G "CodeBlocks - Unix Makefiles" ..
+cmake -DCMAKE_CXX_FLAGS="${CMAKE_CXX_FLAGS} ${args}" ..
 make -j4
 
 # run it

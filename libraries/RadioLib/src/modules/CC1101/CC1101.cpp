@@ -8,16 +8,38 @@ CC1101::CC1101(Module* module) : PhysicalLayer() {
   this->mod = module;
 }
 
-int16_t CC1101::begin(float freq, float br, float freqDev, float rxBw, int8_t pwr, uint8_t preambleLength) {
+int16_t CC1101::begin(const ConfigFSK_t& cfg) {
   // set the modulation and execute the common part
   this->modulation = RADIOLIB_CC1101_MOD_FORMAT_2_FSK;
-  return(this->beginCommon(freq, br, freqDev, rxBw, pwr, preambleLength));
+  return(this->beginCommon(cfg));
+}
+
+int16_t CC1101::begin(float freq, float br, float freqDev, float rxBw, int8_t pwr, uint8_t preambleLength) {
+  ConfigFSK_t cfg;
+  cfg.frequency = freq;
+  cfg.bitRate = br;
+  cfg.frequencyDeviation = freqDev;
+  cfg.receiverBandwidth = rxBw;
+  cfg.power = pwr;
+  cfg.preambleLength = preambleLength;
+  return(this->begin(cfg));
+}
+
+int16_t CC1101::beginFSK4(const ConfigFSK_t& cfg) {
+  // set the modulation and execute the common part
+  this->modulation = RADIOLIB_CC1101_MOD_FORMAT_4_FSK;
+  return(this->beginCommon(cfg));
 }
 
 int16_t CC1101::beginFSK4(float freq, float br, float freqDev, float rxBw, int8_t pwr, uint8_t preambleLength) {
-  // set the modulation and execute the common part
-  this->modulation = RADIOLIB_CC1101_MOD_FORMAT_4_FSK;
-  return(this->beginCommon(freq, br, freqDev, rxBw, pwr, preambleLength));
+  ConfigFSK_t cfg;
+  cfg.frequency = freq;
+  cfg.bitRate = br;
+  cfg.frequencyDeviation = freqDev;
+  cfg.receiverBandwidth = rxBw;
+  cfg.power = pwr;
+  cfg.preambleLength = preambleLength;
+  return(this->beginFSK4(cfg));
 }
 
 void CC1101::reset() {
@@ -266,8 +288,8 @@ int16_t CC1101::startTransmit(const uint8_t* data, size_t len, uint8_t addr) {
 
   // optionally write packet length
   if(this->packetLengthConfig == RADIOLIB_CC1101_LENGTH_CONFIG_VARIABLE) {
-    if (len > RADIOLIB_CC1101_MAX_PACKET_LENGTH - 1) {
-        return(RADIOLIB_ERR_PACKET_TOO_LONG);
+    if(len > RADIOLIB_CC1101_MAX_PACKET_LENGTH - 1) {
+      return(RADIOLIB_ERR_PACKET_TOO_LONG);
     }
     SPIwriteRegister(RADIOLIB_CC1101_REG_FIFO, len + (filter != RADIOLIB_CC1101_ADR_CHK_NONE? 1:0));
     dataSent+= 1;
@@ -282,7 +304,9 @@ int16_t CC1101::startTransmit(const uint8_t* data, size_t len, uint8_t addr) {
   // fill the FIFO
   uint8_t initialWrite = RADIOLIB_MIN((uint8_t)len, (uint8_t)(RADIOLIB_CC1101_FIFO_SIZE - dataSent));
   SPIwriteRegisterBurst(RADIOLIB_CC1101_REG_FIFO, const_cast<uint8_t*>(data), initialWrite);
-  dataSent += initialWrite;
+
+  // reset the data sent counter as it will be used later to calculate the remaining number of bytes to read from the user buffer
+  dataSent = initialWrite;
 
   // set RF switch (if present)
   this->mod->setRfSwitchState(Module::MODE_TX);
@@ -290,24 +314,40 @@ int16_t CC1101::startTransmit(const uint8_t* data, size_t len, uint8_t addr) {
   // set mode to transmit
   SPIsendCommand(RADIOLIB_CC1101_CMD_TX);
 
-  // Keep feeding the FIFO until the packet is done
-  while (dataSent < len) {
+  // keep feeding the FIFO until the packet is done
+  // calculate timeout (5ms + 500 % of expected time-on-air)
+  RadioLibTime_t timeout = 5 + (RadioLibTime_t)((((float)(len * 8)) / this->bitRate) * 5);
+  start = this->mod->hal->millis();
+  while(dataSent < len) {
     uint8_t fifoBytes = 0;
     uint8_t prevFifobytes = 0;
 
-    // Check number of bytes on FIFO twice due to the CC1101 errata. Block until two reads are equal.
-    do{
+    // check number of bytes on FIFO twice due to the CC1101 errata
+    // block until two reads are equal
+    do {
       fifoBytes = SPIgetRegValue(RADIOLIB_CC1101_REG_TXBYTES, 6, 0);
       prevFifobytes = SPIgetRegValue(RADIOLIB_CC1101_REG_TXBYTES, 6, 0);
-    } while (fifoBytes != prevFifobytes);
+    } while(fifoBytes != prevFifobytes);
 
-    //If there is room add more data to the FIFO
-    if (fifoBytes < RADIOLIB_CC1101_FIFO_SIZE) {
-        uint8_t bytesToWrite = RADIOLIB_MIN((uint8_t)(RADIOLIB_CC1101_FIFO_SIZE - fifoBytes), (uint8_t)(len - dataSent));
-        SPIwriteRegisterBurst(RADIOLIB_CC1101_REG_FIFO, const_cast<uint8_t*>(&data[dataSent]), bytesToWrite);
-        dataSent += bytesToWrite;
+    // if there is room, add more data to the FIFO
+    if(fifoBytes < RADIOLIB_CC1101_FIFO_SIZE) {
+      uint8_t bytesToWrite = RADIOLIB_MIN((uint8_t)(RADIOLIB_CC1101_FIFO_SIZE - fifoBytes), (uint8_t)(len - dataSent));
+      SPIwriteRegisterBurst(RADIOLIB_CC1101_REG_FIFO, const_cast<uint8_t*>(&data[dataSent]), bytesToWrite);
+      dataSent += bytesToWrite;
+    }
+
+    // check a timeout - this really shouldn't happen, but some packets can be quite long
+    if(this->mod->hal->millis() - start > timeout) {
+      (void)finishTransmit();
+      return(RADIOLIB_ERR_TX_TIMEOUT);
     }
   }
+
+  // enable interrupt for the final part of the packet
+  if(len > RADIOLIB_CC1101_FIFO_SIZE) {
+    state = SPIsetRegValue(RADIOLIB_CC1101_REG_IOCFG2, RADIOLIB_CC1101_GDOX_SYNC_WORD_SENT_OR_PKT_RECEIVED, 5, 0);
+  }
+  
   return(state);
 }
 
@@ -1015,7 +1055,7 @@ int16_t CC1101::setDIOMapping(uint32_t pin, uint32_t value) {
   return(SPIsetRegValue(RADIOLIB_CC1101_REG_IOCFG0 - pin, value));
 }
 
-int16_t CC1101::beginCommon(float freq, float br, float freqDev, float rxBw, int8_t pwr, uint8_t preambleLength) {
+int16_t CC1101::beginCommon(const ConfigFSK_t& cfg) {
   // set module properties
   this->mod->spiConfig.cmds[RADIOLIB_MODULE_SPI_COMMAND_READ] = RADIOLIB_CC1101_CMD_READ;
   this->mod->spiConfig.cmds[RADIOLIB_MODULE_SPI_COMMAND_WRITE] = RADIOLIB_CC1101_CMD_WRITE;
@@ -1045,27 +1085,27 @@ int16_t CC1101::beginCommon(float freq, float br, float freqDev, float rxBw, int
   }
 
   // configure settings not accessible by API
-  int16_t state = config();
+  int16_t state = this->config();
   RADIOLIB_ASSERT(state);
 
   // configure publicly accessible settings
-  state = setFrequency(freq);
+  state = setFrequency(cfg.frequency);
   RADIOLIB_ASSERT(state);
 
   // configure bitrate
-  state = setBitRate(br);
+  state = setBitRate(cfg.bitRate);
   RADIOLIB_ASSERT(state);
 
   // configure default RX bandwidth
-  state = setRxBandwidth(rxBw);
+  state = setRxBandwidth(cfg.receiverBandwidth);
   RADIOLIB_ASSERT(state);
 
   // configure default frequency deviation
-  state = setFrequencyDeviation(freqDev);
+  state = setFrequencyDeviation(cfg.frequencyDeviation);
   RADIOLIB_ASSERT(state);
 
   // configure default TX output power
-  state = setOutputPower(pwr);
+  state = setOutputPower(cfg.power);
   RADIOLIB_ASSERT(state);
 
   // set default packet length mode
@@ -1073,7 +1113,7 @@ int16_t CC1101::beginCommon(float freq, float br, float freqDev, float rxBw, int
   RADIOLIB_ASSERT(state);
 
   // configure default preamble length
-  state = setPreambleLength(preambleLength, preambleLength - 4);
+  state = setPreambleLength(cfg.preambleLength, cfg.preambleLength - 4);
   RADIOLIB_ASSERT(state);
 
   // set default data shaping
