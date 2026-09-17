@@ -659,7 +659,13 @@ bool AsyncWebServerRequest::_parseReqHeader() {
       }
     } else if (name.equalsIgnoreCase(T_UPGRADE) && value.equalsIgnoreCase(T_WS)) {
       // WebSocket request can be uniquely identified by header: [Upgrade: websocket]
-      _reqconntype = RCT_WS;
+      // Per RFC 6455 §4.1 the handshake is a GET.  Only classify when the
+      // connection is still a plain HTTP connection so a previously detected
+      // SSE request (or any other classified type) cannot be clobbered by
+      // header ordering.
+      if (_method == AsyncWebRequestMethod::HTTP_GET && _reqconntype == RCT_HTTP) {
+        _reqconntype = RCT_WS;
+      }
     } else if (name.equalsIgnoreCase(T_ACCEPT)) {
       String lowcase(value);
       lowcase.toLowerCase();
@@ -668,7 +674,11 @@ bool AsyncWebServerRequest::_parseReqHeader() {
 #else
       const char *substr = std::strstr(lowcase.c_str(), String(T_text_event_stream).c_str());
 #endif
-      if (substr != NULL) {
+      // Server-Sent Events (HTML §9.2) are GET-only connections negotiated via
+      // Accept: text/event-stream.  Only classify when the connection is still
+      // a plain HTTP connection so a previously detected WebSocket upgrade
+      // cannot be clobbered by header ordering.
+      if (substr != NULL && _method == AsyncWebRequestMethod::HTTP_GET && _reqconntype == RCT_HTTP) {
         // WebEvent request can be uniquely identified by header:  [Accept: text/event-stream]
         _reqconntype = RCT_EVENT;
       }
@@ -1459,18 +1469,11 @@ String AsyncWebServerRequest::urlDecode(const String &text) const {
 
 const char *AsyncWebServerRequest::requestedConnTypeToString() const {
   switch (_reqconntype) {
-    case RCT_NOT_USED: return T_RCT_NOT_USED;
-    case RCT_DEFAULT:  return T_RCT_DEFAULT;
-    case RCT_HTTP:     return T_RCT_HTTP;
-    case RCT_WS:       return T_RCT_WS;
-    case RCT_EVENT:    return T_RCT_EVENT;
-    default:           return T_ERROR;
+    case RCT_HTTP:  return T_RCT_HTTP;
+    case RCT_WS:    return T_RCT_WS;
+    case RCT_EVENT: return T_RCT_EVENT;
+    default:        return T_ERROR;
   }
-}
-
-bool AsyncWebServerRequest::isExpectedRequestedConnType(RequestedConnectionType erct1, RequestedConnectionType erct2, RequestedConnectionType erct3) const {
-  return ((erct1 != RCT_NOT_USED) && (erct1 == _reqconntype)) || ((erct2 != RCT_NOT_USED) && (erct2 == _reqconntype))
-         || ((erct3 != RCT_NOT_USED) && (erct3 == _reqconntype));
 }
 
 AsyncClient *AsyncWebServerRequest::clientRelease() {
@@ -1541,6 +1544,8 @@ WebRequestMethod stringToMethod(const String &m) {
     return AsyncWebRequestMethod::HTTP_UNBIND;
   } else if (m == T_ACL) {
     return AsyncWebRequestMethod::HTTP_ACL;
+  } else if (m == T_QUERY) {
+    return AsyncWebRequestMethod::HTTP_QUERY;
   } else {
     return AsyncWebRequestMethod::HTTP_INVALID;
   }
@@ -1576,6 +1581,8 @@ const char *methodToString(WebRequestMethod method) {
     /* RFC-2068, section 19.6.1.2 */
     case AsyncWebRequestMethod::HTTP_LINK:   return T_LINK;
     case AsyncWebRequestMethod::HTTP_UNLINK: return T_UNLINK;
+    /* RFC 10008 */
+    case AsyncWebRequestMethod::HTTP_QUERY: return T_QUERY;
     // Unsupported
     default: return T_UNKNOWN;
   }
