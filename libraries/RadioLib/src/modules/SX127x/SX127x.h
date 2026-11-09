@@ -10,11 +10,19 @@
 #include "../../protocols/PhysicalLayer/PhysicalLayer.h"
 
 // SX127x physical layer properties
-#define RADIOLIB_SX127X_FREQUENCY_STEP_SIZE                     61.03515625
+#define RADIOLIB_SX127X_FREQUENCY_STEP_SIZE                     61.03515625f
 #define RADIOLIB_SX127X_MAX_PACKET_LENGTH                       255
 #define RADIOLIB_SX127X_MAX_PACKET_LENGTH_FSK                   64 // as per datasheet Rev. 7, page 66, the FSK FIFO is just 64 bytes
 #define RADIOLIB_SX127X_CRYSTAL_FREQ                            32.0f
 #define RADIOLIB_SX127X_DIV_EXPONENT                            19
+#define RADIOLIB_SX1272_RFO_POUT_MIN                            -1
+#define RADIOLIB_SX1272_RFO_POUT_MAX                            14
+#define RADIOLIB_SX1272_PA_BOOST_POUT_MIN                       2
+#define RADIOLIB_SX1272_PA_BOOST_POUT_MAX                       20
+#define RADIOLIB_SX1278_RFO_POUT_MIN                            -4
+#define RADIOLIB_SX1278_RFO_POUT_MAX                            15
+#define RADIOLIB_SX1278_PA_BOOST_POUT_MIN                       2
+#define RADIOLIB_SX1278_PA_BOOST_POUT_MAX                       20
 
 // SX127x series common LoRa registers
 #define RADIOLIB_SX127X_REG_FIFO                                0x00
@@ -279,6 +287,27 @@
 #define RADIOLIB_SX127X_RX_BW_MANT_20                           0b00001000  //  4     3
 #define RADIOLIB_SX127X_RX_BW_MANT_24                           0b00010000  //  4     3   default RxBwMant parameter
 #define RADIOLIB_SX127X_RX_BW_EXP                               0b00000101  //  2     0   default RxBwExp parameter
+#define RADIOLIB_SX127X_RX_BW_2_6                               (RADIOLIB_SX127X_RX_BW_MANT_24 | 0x07)
+#define RADIOLIB_SX127X_RX_BW_3_1                               (RADIOLIB_SX127X_RX_BW_MANT_20 | 0x07)
+#define RADIOLIB_SX127X_RX_BW_3_9                               (RADIOLIB_SX127X_RX_BW_MANT_16 | 0x07)
+#define RADIOLIB_SX127X_RX_BW_5_2                               (RADIOLIB_SX127X_RX_BW_MANT_24 | 0x06)
+#define RADIOLIB_SX127X_RX_BW_6_3                               (RADIOLIB_SX127X_RX_BW_MANT_20 | 0x06)
+#define RADIOLIB_SX127X_RX_BW_7_8                               (RADIOLIB_SX127X_RX_BW_MANT_16 | 0x06)
+#define RADIOLIB_SX127X_RX_BW_10_4                              (RADIOLIB_SX127X_RX_BW_MANT_24 | 0x05)
+#define RADIOLIB_SX127X_RX_BW_12_5                              (RADIOLIB_SX127X_RX_BW_MANT_20 | 0x05)
+#define RADIOLIB_SX127X_RX_BW_15_6                              (RADIOLIB_SX127X_RX_BW_MANT_16 | 0x05)
+#define RADIOLIB_SX127X_RX_BW_20_8                              (RADIOLIB_SX127X_RX_BW_MANT_24 | 0x04)
+#define RADIOLIB_SX127X_RX_BW_25_0                              (RADIOLIB_SX127X_RX_BW_MANT_20 | 0x04)
+#define RADIOLIB_SX127X_RX_BW_31_3                              (RADIOLIB_SX127X_RX_BW_MANT_16 | 0x04)
+#define RADIOLIB_SX127X_RX_BW_41_7                              (RADIOLIB_SX127X_RX_BW_MANT_24 | 0x03)
+#define RADIOLIB_SX127X_RX_BW_50_0                              (RADIOLIB_SX127X_RX_BW_MANT_20 | 0x03)
+#define RADIOLIB_SX127X_RX_BW_62_5                              (RADIOLIB_SX127X_RX_BW_MANT_16 | 0x03)
+#define RADIOLIB_SX127X_RX_BW_83_3                              (RADIOLIB_SX127X_RX_BW_MANT_24 | 0x02)
+#define RADIOLIB_SX127X_RX_BW_100                               (RADIOLIB_SX127X_RX_BW_MANT_20 | 0x02)
+#define RADIOLIB_SX127X_RX_BW_125                               (RADIOLIB_SX127X_RX_BW_MANT_16 | 0x02)
+#define RADIOLIB_SX127X_RX_BW_167                               (RADIOLIB_SX127X_RX_BW_MANT_24 | 0x01)
+#define RADIOLIB_SX127X_RX_BW_200                               (RADIOLIB_SX127X_RX_BW_MANT_20 | 0x01)
+#define RADIOLIB_SX127X_RX_BW_250                               (RADIOLIB_SX127X_RX_BW_MANT_16 | 0x01)
 
 // RADIOLIB_SX127X_REG_AFC_BW
 #define RADIOLIB_SX127X_RX_BW_MANT_AFC                          0b00001000  //  4     3   default RxBwMant parameter used during AFC
@@ -593,7 +622,7 @@ class SX127x: public PhysicalLayer {
 
     /*!
       \brief Default constructor. Called internally when creating new LoRa instance.
-      \param mod Instance of Module that will be used to communicate with the %LoRa chip.
+      \param mod Instance of Module that will be used to communicate with the LoRa chip.
     */
     explicit SX127x(Module* mod);
 
@@ -616,8 +645,8 @@ class SX127x: public PhysicalLayer {
       \brief Initialization method. Will be called with appropriate parameters when calling initialization method from derived class.
       \param chipVersions Array of possible values in SPI version register. Used to verify the connection and hardware version.
       \param numVersions Number of possible chip versions.
-      \param syncWord %LoRa sync word.
-      \param preambleLength Length of %LoRa transmission preamble in symbols.
+      \param syncWord LoRa sync word.
+      \param preambleLength Length of LoRa transmission preamble in symbols.
       \returns \ref status_codes
     */
     int16_t begin(const uint8_t* chipVersions, uint8_t numVersions, uint8_t syncWord, uint16_t preambleLength);
@@ -636,10 +665,10 @@ class SX127x: public PhysicalLayer {
       \param preambleLength Length of FSK preamble in bits.
       \returns \ref status_codes
     */
-    int16_t beginFSK(const uint8_t* chipVersions, uint8_t numVersions, float freqDev, float rxBw, uint16_t preambleLength);
+    int16_t beginFSK(const uint8_t* chipVersions, uint8_t numVersions, uint32_t freqDev, uint32_t rxBw, uint16_t preambleLength);
 
     /*!
-      \brief Binary transmit method. Will transmit arbitrary binary data up to 255 bytes long using %LoRa or up to 63 bytes using FSK modem.
+      \brief Binary transmit method. Will transmit arbitrary binary data up to 255 bytes long using LoRa or up to 63 bytes using FSK modem.
       For overloads to transmit Arduino String or C-string, see PhysicalLayer::transmit.
       \param data Binary data that will be transmitted.
       \param len Length of binary data to transmit (in bytes).
@@ -649,7 +678,7 @@ class SX127x: public PhysicalLayer {
     int16_t transmit(const uint8_t* data, size_t len, uint8_t addr = 0) override;
 
     /*!
-      \brief Binary receive method. Will attempt to receive arbitrary binary data up to 255 bytes long using %LoRa or up to 63 bytes using FSK modem.
+      \brief Binary receive method. Will attempt to receive arbitrary binary data up to 255 bytes long using LoRa or up to 63 bytes using FSK modem.
       For overloads to receive Arduino String, see PhysicalLayer::receive.
       \param data Pointer to array to save the received binary data.
       \param len Number of bytes that will be received. Must be known in advance for binary transmissions.
@@ -660,7 +689,7 @@ class SX127x: public PhysicalLayer {
     int16_t receive(uint8_t* data, size_t len, RadioLibTime_t timeout = 0) override;
 
     /*!
-      \brief Performs scan for valid %LoRa preamble in the current channel.
+      \brief Performs scan for valid LoRa preamble in the current channel.
       \returns \ref status_codes
     */
     int16_t scanChannel() override;
@@ -673,20 +702,20 @@ class SX127x: public PhysicalLayer {
     int16_t scanChannel(const ChannelScanConfig_t &config) override;
 
     /*!
-      \brief Sets the %LoRa module to sleep to save power. %Module will not be able to transmit or receive any data while in sleep mode.
+      \brief Sets the LoRa module to sleep to save power. %Module will not be able to transmit or receive any data while in sleep mode.
       %Module will wake up automatically when methods like transmit or receive are called.
       \returns \ref status_codes
     */
     int16_t sleep() override;
 
     /*!
-      \brief Sets the %LoRa module to standby.
+      \brief Sets the LoRa module to standby.
       \returns \ref status_codes
     */
     int16_t standby() override;
 
     /*!
-      \brief Sets the %LoRa module to standby.
+      \brief Sets the LoRa module to standby.
       \param mode Standby mode to be used. No effect, implemented only for PhysicalLayer compatibility.
       \returns \ref status_codes
     */
@@ -738,39 +767,6 @@ class SX127x: public PhysicalLayer {
       \brief Clears interrupt service routine to call when DIO1 activates.
     */
     void clearDio1Action();
-
-    /*!
-      \brief Sets interrupt service routine to call when a packet is received.
-      \param func ISR to call.
-    */
-    void setPacketReceivedAction(void (*func)(void)) override;
-
-    /*!
-      \brief Clears interrupt service routine to call when a packet is received.
-    */
-    void clearPacketReceivedAction() override;
-
-    /*!
-      \brief Sets interrupt service routine to call when a packet is sent.
-      \param func ISR to call.
-    */
-    void setPacketSentAction(void (*func)(void)) override;
-
-    /*!
-      \brief Clears interrupt service routine to call when a packet is sent.
-    */
-    void clearPacketSentAction() override;
-
-    /*!
-      \brief Sets interrupt service routine to call when a channel scan is finished.
-      \param func ISR to call.
-    */
-    void setChannelScanAction(void (*func)(void)) override;
-
-    /*!
-      \brief Clears interrupt service routine to call when a channel scan is finished.
-    */
-    void clearChannelScanAction() override;
 
     /*!
       \brief Set interrupt service routine function to call when FIFO is empty.
@@ -873,7 +869,7 @@ class SX127x: public PhysicalLayer {
     // configuration methods
 
     /*!
-      \brief Sets %LoRa sync word. Only available in %LoRa mode.
+      \brief Sets LoRa sync word. Only available in LoRa mode.
       \param syncWord Sync word to be set.
       \returns \ref status_codes
     */
@@ -887,11 +883,12 @@ class SX127x: public PhysicalLayer {
     int16_t setCurrentLimit(uint8_t currentLimit);
 
     /*!
-      \brief Sets %LoRa or FSK preamble length. Allowed values range from 6 to 65535 in %LoRa mode or 0 to 65535 in FSK mode.
-      \param preambleLength Preamble length to be set (in symbols when in LoRa mode or bits in FSK mode).
+      \brief Sets LoRa or FSK preamble length. Allowed values range from 6 to 65535 in LoRa mode or 0 to 65535 in FSK mode.
+      \param len Preamble length to be set (in symbols when in LoRa mode or bits in FSK mode).
+      \param detLen Not supported by SX127x.
       \returns \ref status_codes
     */
-    int16_t setPreambleLength(size_t preambleLength) override;
+    int16_t setPreambleLength(size_t len, size_t detLen = 0xFFFFFFFF) override;
 
     /*!
       \brief Invert FSK preamble polarity. The default (non-inverted) is 0x55, the inverted is 0xAA.
@@ -905,7 +902,7 @@ class SX127x: public PhysicalLayer {
       \param autoCorrect When set to true, frequency will be automatically corrected.
       \returns Frequency error in Hz.
     */
-    float getFrequencyError(bool autoCorrect = false);
+    int32_t getFrequencyError(bool autoCorrect = false);
 
     /*!
       \brief Gets current AFC error.
@@ -921,24 +918,28 @@ class SX127x: public PhysicalLayer {
 
     /*!
       \brief Sets FSK frequency deviation from carrier frequency. Allowed values depend on bit rate setting and must be lower than 200 kHz. Only available in FSK mode.
-      \param freqDev Frequency deviation to be set (in kHz).
+      \param freqDev Frequency deviation to be set in Hz.
       \returns \ref status_codes
     */
-    int16_t setFrequencyDeviation(float freqDev) override;
+    int16_t setFrequencyDeviation(uint32_t freqDev) override;
 
     /*!
-      \brief Sets FSK receiver bandwidth. Allowed values range from 2.6 to 250 kHz. Only available in FSK mode.
-      \param rxBw Receiver bandwidth to be set (in kHz).
+      \brief Sets FSK receiver bandwidth. Allowed values range from 5200 Hz to 500 kHz. Only available in FSK mode.
+      NOTE: The values in datasheet (2.6 kHz etc.) are single-sideband (SSB)! For consistency with other radios,
+      RadioLib uses dual-sideband (DSB) values, which are double than what is listed in the datasheet.
+      \param rxBw Receiver bandwidth to be set in Hz.
       \returns \ref status_codes
     */
-    int16_t setRxBandwidth(float rxBw);
+    int16_t setRxBandwidth(uint32_t rxBw);
 
     /*!
-      \brief Sets FSK automatic frequency correction bandwidth. Allowed values range from 2.6 to 250 kHz. Only available in FSK mode.
-      \param afcBw Receiver AFC bandwidth to be set (in kHz).
+      \brief Sets FSK automatic frequency correction bandwidth. Allowed values range from 5200 to 500 kHz. Only available in FSK mode.
+      NOTE: The values in datasheet (2.6 kHz etc.) are single-sideband (SSB)! For consistency with other radios,
+      RadioLib uses dual-sideband (DSB) values, which are double than what is listed in the datasheet.
+      \param afcBw Receiver AFC bandwidth to be set (in Hz).
       \returns \ref status_codes
     */
-    int16_t setAFCBandwidth(float afcBw);
+    int16_t setAFCBandwidth(uint32_t afcBw);
 
     /*!
       \brief Enables or disables FSK automatic frequency correction(AFC)
@@ -1059,15 +1060,6 @@ class SX127x: public PhysicalLayer {
     int16_t variablePacketLengthMode(uint8_t maxLen = RADIOLIB_SX127X_MAX_PACKET_LENGTH_FSK);
 
     /*!
-      \brief Convert from bytes to LoRa symbols.
-      \param len Payload length in bytes.
-      \param dr Data rate.
-      \param pc Packet configuration.
-      \returns The total number of LoRa symbols, including preamble, sync and possible header.
-    */
-    float getNumSymbols(size_t len, DataRate_t dr, PacketConfig_t pc);
-
-    /*!
       \brief Get expected time-on-air for a given size of payload.
       \param len Payload length in bytes.
       \returns Expected time-on-air in microseconds.
@@ -1090,6 +1082,15 @@ class SX127x: public PhysicalLayer {
       \returns Timeout value in a unit that is specific for the used module
     */
     RadioLibTime_t calculateRxTimeout(RadioLibTime_t timeoutUs) override;
+
+    /*!
+      \brief Set the LoRa sync (symbol-number) timeout. In single reception mode, the radio will
+      abort reception if no valid preamble/header is detected within this many LoRa symbols.
+      Only available in LoRa mode.
+      \param numSymbols Number of LoRa symbols to wait for (0 - 1023). Set to 0 to disable the timeout.
+      \returns \ref status_codes
+    */
+    int16_t setLoRaSymbNumTimeout(uint16_t numSymbols);
 
     /*!
       \brief Read currently active IRQ flags.
@@ -1191,12 +1192,26 @@ class SX127x: public PhysicalLayer {
       \returns \ref status_codes
     */
     int16_t getModem(ModemType_t* modem) override;
+
+    /*! \copydoc PhysicalLayer::getMode */
+    int16_t getMode(RadioModeType_t* mode) override;
     
     /*! \copydoc PhysicalLayer::stageMode */
     int16_t stageMode(RadioModeType_t mode, RadioModeConfig_t* cfg) override;
 
     /*! \copydoc PhysicalLayer::launchMode */
     int16_t launchMode() override;
+
+    /*!
+      \copydoc PhysicalLayer::writeTxBuffer
+      \note Only available for the LoRa modem. In FSK/OOK the FIFO is written as a stream, with the
+      length and the optional address byte ahead of the payload, so the payload cannot be written on
+      its own; this reports RADIOLIB_ERR_WRONG_MODEM there.
+    */
+    int16_t writeTxBuffer(const uint8_t* data, size_t len) override;
+
+    /*! \copydoc PhysicalLayer::clearTxBuffer */
+    int16_t clearTxBuffer() override;
 
     #if !RADIOLIB_EXCLUDE_DIRECT_RECEIVE
     /*!
@@ -1276,8 +1291,8 @@ class SX127x: public PhysicalLayer {
 #if !RADIOLIB_GODMODE
   protected:
 #endif
-    float frequency = 0;
-    float bandwidth = 125;
+    uint32_t frequency = 0;
+    uint32_t bandwidth = RADIOLIB_UNIT_KILO(125);
     uint8_t spreadingFactor = 9;
     size_t packetLength = 0;
     uint8_t codingRate = 0;
@@ -1289,8 +1304,8 @@ class SX127x: public PhysicalLayer {
 
     virtual int16_t configFSK();
     int16_t getActiveModem();
-    int16_t setFrequencyRaw(float newFreq);
-    int16_t setBitRateCommon(float br, uint8_t fracRegAddr);
+    int16_t setFrequencyRaw(uint32_t newFreq);
+    int16_t setBitRateCommon(uint32_t br, uint8_t fracRegAddr);
     float getRSSICommon(bool packet, bool skipReceive, int16_t offset);
     int16_t setHeaderType(uint8_t headerType, uint8_t bitIndex, size_t len = 0xFF);
 
@@ -1299,7 +1314,7 @@ class SX127x: public PhysicalLayer {
 #endif
     Module* mod;
 
-    float bitRate = 0, frequencyDev = 0;
+    uint32_t bitRate = 0, frequencyDev = 0;
     bool crcOn = true; // default value used in FSK mode
     bool packetLengthQueried = false; // FSK packet length is the first byte in FIFO, length can only be queried once
     uint8_t packetLengthConfig = RADIOLIB_SX127X_PACKET_VARIABLE;
@@ -1312,13 +1327,7 @@ class SX127x: public PhysicalLayer {
     int16_t setMode(uint8_t mode);
     int16_t setActiveModem(uint8_t modem);
     void clearFIFO(size_t count); // used mostly to clear remaining bytes in FIFO after a packet read
-
-    /*!
-      \brief Calculate exponent and mantissa values for receiver bandwidth and AFC
-      \param bandwidth bandwidth to be set (in kHz).
-      \returns bandwidth in mantissa and exponent format
-    */
-    static uint8_t calculateBWManExp(float bandwidth);
+    int16_t setRxBw(uint32_t rxBw, bool afc);
 
     virtual void errataFix(bool rx); // should be implemented in derived class
 };

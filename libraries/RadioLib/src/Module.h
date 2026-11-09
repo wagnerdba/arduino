@@ -9,6 +9,11 @@
   #include <SPI.h>
 #endif
 
+// Keep this SubGhz include here to fix Platformio LDO (#718).
+#if defined(STM32WLxx)
+  #include <SubGhz.h>
+#endif
+
 /*!
   \def END_OF_MODE_TABLE Value to use as the last element in a mode table to indicate the
   end of the table. See \ref setRfSwitchTable for details.
@@ -242,13 +247,15 @@ class Module {
 
     /*!
       \brief Initialize low-level module control.
+      \returns \ref status_codes
     */
-    void init();
+    int16_t init();
 
     /*!
       \brief Terminate low-level module control.
+      \returns \ref status_codes
     */
-    void term();
+    int16_t term();
 
     // SPI methods
 
@@ -430,7 +437,7 @@ class Module {
 
 
       \param pins A reference to an array of pins to control. This
-      should always be an array of 3 elements. If you need less pins,
+      should always be an array of 5 elements. If you need less pins,
       use RADIOLIB_NC for the unused elements.
 
       \param table A reference to an array of pin values to use for each
@@ -465,7 +472,7 @@ class Module {
       \code
       // In global scope, define the pin array and mode table
       static const uint32_t rfswitch_pins[] =
-                             {PA0,  PA1,  RADIOLIB_NC};
+                             {PA0,  PA1,  RADIOLIB_NC, RADIOLIB_NC, RADIOLIB_NC};
       static const Module::RfSwitchMode_t rfswitch_table[] = {
         {Module::MODE_IDLE,  {LOW,  LOW}},
         {Module::MODE_RX,    {HIGH, LOW}},
@@ -481,8 +488,15 @@ class Module {
       }
       \endcode
     */
-
     void setRfSwitchTable(const uint32_t (&pins)[RFSWITCH_MAX_PINS], const RfSwitchMode_t table[]);
+
+    /*!
+      \brief Retrieve previously configured RF switch table.
+      \param pins Pointer to array where pin numbers will be saved.
+      NOTE: It is up to the caller to ensure the array is large enough to save all the pins!
+      \param table Pointer to variable which will end up pointing to the RF switch table.
+    */
+    void getRfSwitchTable(uint32_t* pins, const RfSwitchMode_t** table);
 
     /*!
       \brief Find a mode in the RfSwitchTable.

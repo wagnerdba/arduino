@@ -95,6 +95,15 @@ BOOST_FIXTURE_TEST_CASE(PhyComplete_AllRadios, ModuleFixture) {
     state = radio.phy->setFrequency(0);
     BOOST_TEST(state != RADIOLIB_ERR_UNSUPPORTED);
 
+    state = radio.phy->setBandwidth(0);
+    BOOST_TEST(state != RADIOLIB_ERR_UNSUPPORTED);
+
+    state = radio.phy->setSpreadingFactor(0);
+    BOOST_TEST(state != RADIOLIB_ERR_UNSUPPORTED);
+
+    state = radio.phy->setCodingRate(0);
+    BOOST_TEST(state != RADIOLIB_ERR_UNSUPPORTED);
+
     state = radio.phy->setBitRate(0);
     BOOST_TEST(state != RADIOLIB_ERR_UNSUPPORTED);
 
@@ -113,9 +122,6 @@ BOOST_FIXTURE_TEST_CASE(PhyComplete_AllRadios, ModuleFixture) {
     state = radio.phy->setOutputPower(0);
     BOOST_TEST(state != RADIOLIB_ERR_UNSUPPORTED);
 
-    state = radio.phy->checkOutputPower(0, nullptr);
-    BOOST_TEST(state != RADIOLIB_ERR_UNSUPPORTED);
-
     state = radio.phy->setSyncWord(testBuff, 1);
     BOOST_TEST(state != RADIOLIB_ERR_UNSUPPORTED);
 
@@ -130,7 +136,7 @@ BOOST_FIXTURE_TEST_CASE(PhyComplete_AllRadios, ModuleFixture) {
     BOOST_TEST(state != RADIOLIB_ERR_UNSUPPORTED);
 
     state = radio.phy->getPacketLength();
-    BOOST_TEST(state != 0);
+    BOOST_TEST(state != RADIOLIB_ERR_UNSUPPORTED);
 
     state = radio.phy->getRSSI();
     BOOST_TEST(state != RADIOLIB_ERR_UNSUPPORTED);
@@ -183,14 +189,24 @@ BOOST_FIXTURE_TEST_CASE(PhyComplete_AllRadios, ModuleFixture) {
     ModemType_t modem;
     state = radio.phy->getModem(&modem);
     BOOST_TEST(state != RADIOLIB_ERR_UNSUPPORTED);
+
+    RadioModeType_t radioMode;
+    state = radio.phy->getMode(&radioMode);
+    BOOST_TEST(state != RADIOLIB_ERR_UNSUPPORTED);
     
-    RadioModeConfig_t cfg = { .receive = { .timeout = 0, .irqFlags = RADIOLIB_IRQ_RX_DEFAULT_FLAGS, 
+    RadioModeConfig_t cfg = { .receive = { .timeout = 0, .syncSymbols = 0, .irqFlags = RADIOLIB_IRQ_RX_DEFAULT_FLAGS,
       .irqMask = RADIOLIB_IRQ_RX_DEFAULT_MASK, .len = 0 }};
     state = radio.phy->stageMode(RADIOLIB_RADIO_MODE_RX, &cfg);
     BOOST_TEST(state != RADIOLIB_ERR_UNSUPPORTED);
     
     radio.phy->stagedMode = RADIOLIB_RADIO_MODE_RX;
     state = radio.phy->launchMode();
+    BOOST_TEST(state != RADIOLIB_ERR_UNSUPPORTED);
+
+    state = radio.phy->writeTxBuffer(testBuff, 1);
+    BOOST_TEST(state != RADIOLIB_ERR_UNSUPPORTED);
+
+    state = radio.phy->clearTxBuffer();
     BOOST_TEST(state != RADIOLIB_ERR_UNSUPPORTED);
   }
   

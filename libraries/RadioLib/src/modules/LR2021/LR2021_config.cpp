@@ -81,28 +81,28 @@ static const LR2021PaTableEntry_t paOptTableHf[RADIOLIB_LR2021_PA_TABLE_LEN] = {
   { .paDutyCycle = 0, .paSlices = RADIOLIB_LR2021_PA_LF_SLICES_UNUSED, .paVal = 24 },  // 12
 };
 
-int16_t LR2021::setFrequency(float freq) {
+int16_t LR2021::setFrequency(uint32_t freq) {
   return(this->setFrequency(freq, false));
 }
 
-int16_t LR2021::setFrequency(float freq, bool skipCalibration) {
+int16_t LR2021::setFrequency(uint32_t freq, bool skipCalibration) {
   #if RADIOLIB_CHECK_PARAMS
-  if(!(((freq >= 150.0f) && (freq <= 1090.0f)) ||
-    ((freq >= 1900.0f) && (freq <= 2200.0f)) ||
-    ((freq >= 2400.0f) && (freq <= 2500.0f)))) {
+  if(!(((freq >= RADIOLIB_UNIT_MEGA(150)) && (freq <= RADIOLIB_UNIT_MEGA(1090))) ||
+    ((freq >= RADIOLIB_UNIT_MEGA(1900)) && (freq <= RADIOLIB_UNIT_MEGA(2200))) ||
+    ((freq >= RADIOLIB_UNIT_MEGA(2400)) && (freq <= RADIOLIB_UNIT_MEGA(2500))))) {
       return(RADIOLIB_ERR_INVALID_FREQUENCY);
   }
   #endif
 
   // check if we need to recalibrate image
   int16_t state;
-  if(!skipCalibration && (fabsf(freq - this->freqMHz) >= RADIOLIB_LR2021_CAL_IMG_FREQ_TRIG_MHZ)) {
+  if(!skipCalibration && (RADIOLIB_ABS_UNSIGNED(freq, this->freqHz) >= RADIOLIB_LR2021_CAL_IMG_FREQ_TRIG_MHZ)) {
     // calibration can fail if there is a strong interfering source
     // run it several times until it passes
     int i = 0;
     for(; i < RADIOLIB_LR2021_MAX_CAL_ATTEMPTS; i++) {
       // get the nearest multiple of 4 MHz
-      uint16_t frequencies[3] = { (uint16_t)((freq / 4.0f) + 0.5f), 0, 0 };
+      uint16_t frequencies[3] = { (uint16_t)(freq / RADIOLIB_UNIT_MEGA(4)), 0, 0 };
       frequencies[0] |= (freq > RADIOLIB_LR2021_LF_CUTOFF_FREQ) ? RADIOLIB_LR2021_CALIBRATE_FE_HF_PATH : RADIOLIB_LR2021_CALIBRATE_FE_LF_PATH;
       state = calibrateFrontEnd(const_cast<const uint16_t*>(frequencies));
 
@@ -134,10 +134,14 @@ int16_t LR2021::setFrequency(float freq, bool skipCalibration) {
   }
 
   // set frequency
-  state = setRfFrequency((uint32_t)(freq*1000000.0f));
+  state = setRfFrequency((uint32_t)(freq));
   RADIOLIB_ASSERT(state);
-  this->freqMHz = freq;
+  this->freqHz = freq;
   this->highFreq = (freq > RADIOLIB_LR2021_LF_CUTOFF_FREQ);
+  
+  // power limits depend on the frequency band
+  this->updatePowerLimits(this->highFreq);
+
   return(state);
 }
 
@@ -146,8 +150,9 @@ int16_t LR2021::setOutputPower(int8_t power) {
 }
 
 int16_t LR2021::setOutputPower(int8_t power, uint32_t rampTimeUs) {
-  // check if power value is configurable
-  int16_t state = this->checkOutputPower(power, NULL);
+  // apply offset for external PA
+  int8_t pwr = power;
+  int16_t state = this->applyOutputPowerOffset(this->highFreq ? RADIOLIB_LR2021_HF_POUT_MIN : RADIOLIB_LR2021_LF_POUT_MIN, &power, &pwr);
   RADIOLIB_ASSERT(state);
   
   //! \TODO: [LR2021] how and when to configure OCP?
@@ -162,7 +167,7 @@ int16_t LR2021::setOutputPower(int8_t power, uint32_t rampTimeUs) {
   LR2021PaTableEntry_t* table = this->paOptTable[this->highFreq] ? this->paOptTable[this->highFreq] : defaultTables[this->highFreq];
   
   // update PA config
-  const LR2021PaTableEntry_t* paCfg = this->highFreq ? &table[power + 19] : &table[power + 9];
+  const LR2021PaTableEntry_t* paCfg = this->highFreq ? &table[pwr + 19] : &table[pwr - RADIOLIB_LR2021_LF_POUT_MIN];
   state = setPaConfig(this->highFreq, 
     RADIOLIB_LR2021_PA_LF_MODE_FSM, 
     this->highFreq ? RADIOLIB_LR2021_PA_LF_DUTY_CYCLE_UNUSED : paCfg->paDutyCycle, 
@@ -179,22 +184,17 @@ void LR2021::setPaTable(LR2021PaTableEntry_t* table, bool highFreq) {
   this->paOptTable[highFreq] = table;
 }
 
-int16_t LR2021::checkOutputPower(int8_t power, int8_t* clipped) {
-  if(this->highFreq) {
-    if(clipped) {
-      *clipped = RADIOLIB_MAX(-19, RADIOLIB_MIN(12, power));
-    }
-    RADIOLIB_CHECK_RANGE(power, -19, 12, RADIOLIB_ERR_INVALID_OUTPUT_POWER);
+int16_t LR2021::setStandbyXOSC(bool enable) {
+  // set the internal variable
+  this->standbyXOSC = enable;
 
-  } else {
-    if(clipped) {
-      *clipped = RADIOLIB_MAX(-9, RADIOLIB_MIN(22, power));
-    }
-    RADIOLIB_CHECK_RANGE(power, -9, 22, RADIOLIB_ERR_INVALID_OUTPUT_POWER);
+  // call standby to start the oscillator
+  int16_t state = this->standbyXOSC ? standby(RADIOLIB_LR2021_STANDBY_XOSC) : standby(RADIOLIB_LR2021_STANDBY_RC);
+  RADIOLIB_ASSERT(state);
 
-  }
-  
-  return(RADIOLIB_ERR_NONE);
+  // update Rx/Tx fallback mode
+  uint8_t mode = this->standbyXOSC ? RADIOLIB_LR2021_FALLBACK_MODE_STBY_XOSC : RADIOLIB_LR2021_FALLBACK_MODE_STBY_RC;
+  return(setRxTxFallbackMode(mode));
 }
 
 void LR2021::setRfSwitchTable(const uint32_t (&pins)[Module::RFSWITCH_MAX_PINS], const Module::RfSwitchMode_t table[]) {
@@ -220,11 +220,42 @@ void LR2021::setRfSwitchTable(const uint32_t (&pins)[Module::RFSWITCH_MAX_PINS],
     uint8_t pull = dioNum == 0 ? RADIOLIB_LR2021_DIO_SLEEP_PULL_UP : RADIOLIB_LR2021_DIO_SLEEP_PULL_AUTO;
     // enable RF control for this pin and set the modes in which it is active
     (void)this->setDioFunction(dioNum + 5, RADIOLIB_LR2021_DIO_FUNCTION_RF_SWITCH, pull);
-    (void)this->setDioRfSwitchConfig(dioNum + 5, dioConfigs[i]);
+    (void)this->setDioRfSwitchConfig(dioNum + 5, dioConfigs[dioNum]);
   }
+
+  // also call the Module::setRfSwitchTable to cache the RF switch table
+  // we may need to re-apply it after modem switch
+  this->mod->setRfSwitchTable(pins, table);
 }
 
-int16_t LR2021::setBandwidth(float bw) {
+int16_t LR2021::forceLDRO(bool enable) {
+  // check packet type
+  uint8_t type = RADIOLIB_LR2021_PACKET_TYPE_NONE;
+  int16_t state = getPacketType(&type);
+  RADIOLIB_ASSERT(state);
+  if(type != RADIOLIB_LR2021_PACKET_TYPE_LORA) {
+    return(RADIOLIB_ERR_WRONG_MODEM);
+  }
+
+  // update modulation parameters
+  this->ldroAuto = false;
+  this->ldrOptimize = (uint8_t)enable;
+  return(setLoRaModulationParams(this->spreadingFactor, this->bandwidth, this->codingRate, this->ldrOptimize));
+}
+
+int16_t LR2021::autoLDRO() {
+  uint8_t type = RADIOLIB_LR2021_PACKET_TYPE_NONE;
+  int16_t state = getPacketType(&type);
+  RADIOLIB_ASSERT(state);
+  if(type != RADIOLIB_LR2021_PACKET_TYPE_LORA) {
+    return(RADIOLIB_ERR_WRONG_MODEM);
+  }
+
+  this->ldroAuto = true;
+  return(setLoRaModulationParams(this->spreadingFactor, this->bandwidth, this->codingRate, this->ldrOptimize));
+}
+
+int16_t LR2021::setBandwidth(uint32_t bw) {
   // check active modem
   uint8_t type = RADIOLIB_LR2021_PACKET_TYPE_NONE;
   int16_t state = getPacketType(&type);
@@ -232,46 +263,58 @@ int16_t LR2021::setBandwidth(float bw) {
   if(type != RADIOLIB_LR2021_PACKET_TYPE_LORA) {
     return(RADIOLIB_ERR_WRONG_MODEM);
   }
-    
-  // convert to int to avoid bunch of math
-  int bw_div2 = bw / 2 + 0.01f;
 
   // check allowed bandwidth values
-  switch (bw_div2)  {
-    case 15:
+  switch(bw)  {
+    case(7800):
+      this->bandwidth = RADIOLIB_LR2021_LORA_BW_8;
+      break;
+    case(10400):
+      this->bandwidth = RADIOLIB_LR2021_LORA_BW_10;
+      break;
+    case(15600):
+      this->bandwidth = RADIOLIB_LR2021_LORA_BW_16;
+      break;
+    case(20800):
+      this->bandwidth = RADIOLIB_LR2021_LORA_BW_21;
+      break;
+    case(31250):
       this->bandwidth = RADIOLIB_LR2021_LORA_BW_31;
       break;
-    case 20:
+    case(41670):
       this->bandwidth = RADIOLIB_LR2021_LORA_BW_41;
       break;
-    case 31:
+    case(62500):
       this->bandwidth = RADIOLIB_LR2021_LORA_BW_62;
       break;
-    case 41:
+    case(83340):
       this->bandwidth = RADIOLIB_LR2021_LORA_BW_83;
       break;
-    case 50:
+    case(RADIOLIB_UNIT_KILO(101)):
       this->bandwidth = RADIOLIB_LR2021_LORA_BW_101;
       break;
-    case 101:
+    case(203125):
+    case(RADIOLIB_UNIT_KILO(203)):
       this->bandwidth = RADIOLIB_LR2021_LORA_BW_203;
       break;
-    case 62:
+    case(RADIOLIB_UNIT_KILO(125)):
       this->bandwidth = RADIOLIB_LR2021_LORA_BW_125;
       break;
-    case 125:
+    case(RADIOLIB_UNIT_KILO(250)):
       this->bandwidth = RADIOLIB_LR2021_LORA_BW_250;
       break;
-    case 203:
+    case(406250):
+    case(RADIOLIB_UNIT_KILO(406)):
       this->bandwidth = RADIOLIB_LR2021_LORA_BW_406;
       break;
-    case 250:
+    case(RADIOLIB_UNIT_KILO(500)):
       this->bandwidth = RADIOLIB_LR2021_LORA_BW_500;
       break;
-    case 406:
+    case(812500):
+    case(RADIOLIB_UNIT_KILO(812)):
       this->bandwidth = RADIOLIB_LR2021_LORA_BW_812;
       break;
-    case 500:
+    case(RADIOLIB_UNIT_KILO(1000)):
       this->bandwidth = RADIOLIB_LR2021_LORA_BW_1000;
       break;
     default:
@@ -279,8 +322,12 @@ int16_t LR2021::setBandwidth(float bw) {
   }
 
   // update modulation parameters
-  this->bandwidthKhz = bw;
+  this->bandwidthHz = bw;
   return(setLoRaModulationParams(this->spreadingFactor, this->bandwidth, this->codingRate, this->ldrOptimize));
+}
+
+int16_t LR2021::setSpreadingFactor(uint8_t sf) {
+  return(this->setSpreadingFactor(sf, false));
 }
 
 int16_t LR2021::setSpreadingFactor(uint8_t sf, bool legacy) {
@@ -366,7 +413,7 @@ int16_t LR2021::setSyncWord(uint8_t syncWord) {
   return(setLoRaSyncword(syncWord));
 }
 
-int16_t LR2021::setPreambleLength(size_t preambleLength) {
+int16_t LR2021::setPreambleLength(size_t preambleLength, size_t preambleDetLength) {
   // check active modem
   uint8_t type = RADIOLIB_LR2021_PACKET_TYPE_NONE;
   int16_t state = getPacketType(&type);
@@ -374,17 +421,23 @@ int16_t LR2021::setPreambleLength(size_t preambleLength) {
   if(type == RADIOLIB_LR2021_PACKET_TYPE_LORA) {
     this->preambleLengthLoRa = preambleLength;
     return(setLoRaPacketParams(this->preambleLengthLoRa, this->headerType, 
-      (this->headerType == RADIOLIB_LR2021_LORA_HEADER_IMPLICIT) ? this->implicitLen : RADIOLIB_LR2021_MAX_PACKET_LENGTH, this->crcTypeLoRa, (uint8_t)this->invertIQEnabled));
+      (this->headerType == RADIOLIB_LRXXXX_LORA_HEADER_IMPLICIT) ? this->implicitLen : RADIOLIB_LR2021_MAX_PACKET_LENGTH, this->crcTypeLoRa, (uint8_t)this->invertIQEnabled));
   
   } else if(type == RADIOLIB_LR2021_PACKET_TYPE_GFSK) {
     this->preambleLengthGFSK = preambleLength;
-    this->preambleDetLength = (preambleLength / 8) << 3;
+    this->preambleDetLength = preambleDetLength;
+    if(preambleDetLength == 0xFFFFFFFF) {
+      this->preambleDetLength = (preambleLength / 8) << 3;
+    }
     return(setGfskPacketParams(this->preambleLengthGFSK, this->preambleDetLength, false, false, this->addrComp, this->packetType, 
       (this->packetType == RADIOLIB_LR2021_GFSK_OOK_PACKET_FORMAT_FIXED) ? this->implicitLen : RADIOLIB_LR2021_MAX_PACKET_LENGTH, this->crcTypeGFSK, this->whitening));
   
   } else if(type == RADIOLIB_LR2021_PACKET_TYPE_OOK) {
     this->preambleLengthGFSK = preambleLength;
-    this->preambleDetLength = (preambleLength / 8) << 3;
+    this->preambleDetLength = preambleDetLength;
+    if(preambleDetLength == 0xFFFFFFFF) {
+      this->preambleDetLength = (preambleLength / 8) << 3;
+    }
     return(setOokPacketParams(this->preambleLengthGFSK, this->addrComp, this->packetType, 
       (this->packetType == RADIOLIB_LR2021_GFSK_OOK_PACKET_FORMAT_FIXED) ? this->implicitLen : RADIOLIB_LR2021_MAX_PACKET_LENGTH, this->crcTypeGFSK, this->whitening));
     
@@ -401,9 +454,10 @@ int16_t LR2021::setPreambleLength(size_t preambleLength) {
   return(RADIOLIB_ERR_WRONG_MODEM);
 }
 
-int16_t LR2021::setTCXO(float voltage, uint32_t delay) {
-  // set mode to standby
-  standby();
+int16_t LR2021::setTCXO(RadioLibTCXOVoltage_t voltage, uint32_t delay) {
+  // force RC oscillator - typically this is called on startup,
+  // so we cannot rely on what the user may have provided
+  (void)standby(RADIOLIB_LR2021_STANDBY_RC);
 
   // check oscillator startup error flag and clear it
   uint16_t errors = 0;
@@ -413,42 +467,25 @@ int16_t LR2021::setTCXO(float voltage, uint32_t delay) {
     clearErrors();
   }
 
-  // check 0 V disable
-  if(fabsf(voltage - 0.0f) <= 0.001f) {
+  // check disable
+  if(voltage == RadioLibTCXOVoltage_t::VoltageNone) {
     setTcxoMode(0, 0);
     return(reset());
   }
 
   // check allowed voltage values
-  uint8_t tune = 0;
-  if(fabsf(voltage - 1.6f) <= 0.001f) {
-    tune = RADIOLIB_LRXXXX_TCXO_VOLTAGE_1_6;
-  } else if(fabsf(voltage - 1.7f) <= 0.001f) {
-    tune = RADIOLIB_LRXXXX_TCXO_VOLTAGE_1_7;
-  } else if(fabsf(voltage - 1.8f) <= 0.001f) {
-    tune = RADIOLIB_LRXXXX_TCXO_VOLTAGE_1_8;
-  } else if(fabsf(voltage - 2.2f) <= 0.001f) {
-    tune = RADIOLIB_LRXXXX_TCXO_VOLTAGE_2_2;
-  } else if(fabsf(voltage - 2.4f) <= 0.001f) {
-    tune = RADIOLIB_LRXXXX_TCXO_VOLTAGE_2_4;
-  } else if(fabsf(voltage - 2.7f) <= 0.001f) {
-    tune = RADIOLIB_LRXXXX_TCXO_VOLTAGE_2_7;
-  } else if(fabsf(voltage - 3.0f) <= 0.001f) {
-    tune = RADIOLIB_LRXXXX_TCXO_VOLTAGE_3_0;
-  } else if(fabsf(voltage - 3.3f) <= 0.001f) {
-    tune = RADIOLIB_LRXXXX_TCXO_VOLTAGE_3_3;
-  } else {
+  if(voltage > RadioLibTCXOVoltage_t::Voltage3V3) {
     return(RADIOLIB_ERR_INVALID_TCXO_VOLTAGE);
   }
 
   // calculate delay value
-  uint32_t delayValue = (uint32_t)((float)delay / 30.52f);
+  uint32_t delayValue = (uint32_t)((float)delay * (1.0f / 30.52f));
   if(delayValue == 0) {
     delayValue = 1;
   }
  
   // enable TCXO control
-  return(setTcxoMode(tune, delayValue));
+  return(setTcxoMode((uint8_t)voltage, delayValue));
 }
 
 int16_t LR2021::setCRC(uint8_t len, uint32_t initial, uint32_t polynomial, bool inverted) {
@@ -458,9 +495,9 @@ int16_t LR2021::setCRC(uint8_t len, uint32_t initial, uint32_t polynomial, bool 
   RADIOLIB_ASSERT(state);
   if(type == RADIOLIB_LR2021_PACKET_TYPE_LORA) {
     // LoRa CRC doesn't allow to set CRC polynomial, initial value, or inversion
-    this->crcTypeLoRa = len > 0 ? RADIOLIB_LR2021_LORA_CRC_ENABLED : RADIOLIB_LR2021_LORA_CRC_DISABLED;
+    this->crcTypeLoRa = len > 0;
     return(setLoRaPacketParams(this->preambleLengthLoRa, this->headerType, 
-      (this->headerType == RADIOLIB_LR2021_LORA_HEADER_IMPLICIT) ? this->implicitLen : RADIOLIB_LR2021_MAX_PACKET_LENGTH, this->crcTypeLoRa, (uint8_t)this->invertIQEnabled));
+      (this->headerType == RADIOLIB_LRXXXX_LORA_HEADER_IMPLICIT) ? this->implicitLen : RADIOLIB_LR2021_MAX_PACKET_LENGTH, this->crcTypeLoRa, (uint8_t)this->invertIQEnabled));
   
   } else if(type == RADIOLIB_LR2021_PACKET_TYPE_GFSK) {
     if(len > 4) {
@@ -472,6 +509,7 @@ int16_t LR2021::setCRC(uint8_t len, uint32_t initial, uint32_t polynomial, bool 
       this->crcTypeGFSK += 0x08;
     }
 
+    this->crcLenGFSK = len;
     state = setGfskPacketParams(this->preambleLengthGFSK, this->preambleDetLength, false, false, this->addrComp, this->packetType, 
       (this->packetType == RADIOLIB_LR2021_GFSK_OOK_PACKET_FORMAT_FIXED) ? this->implicitLen : RADIOLIB_LR2021_MAX_PACKET_LENGTH, this->crcTypeGFSK, this->whitening);
     RADIOLIB_ASSERT(state);
@@ -519,50 +557,59 @@ int16_t LR2021::invertIQ(bool enable) {
 
   this->invertIQEnabled = enable;
   return(setLoRaPacketParams(this->preambleLengthLoRa, this->headerType, 
-    (this->headerType == RADIOLIB_LR2021_LORA_HEADER_IMPLICIT) ? this->implicitLen : RADIOLIB_LR2021_MAX_PACKET_LENGTH, this->crcTypeLoRa, (uint8_t)this->invertIQEnabled));
+    (this->headerType == RADIOLIB_LRXXXX_LORA_HEADER_IMPLICIT) ? this->implicitLen : RADIOLIB_LR2021_MAX_PACKET_LENGTH, this->crcTypeLoRa, (uint8_t)this->invertIQEnabled));
 }
 
-int16_t LR2021::setBitRate(float br) {
+int16_t LR2021::setBitRate(uint32_t br) {
   // check active modem
   uint8_t type = RADIOLIB_LR2021_PACKET_TYPE_NONE;
   int16_t state = getPacketType(&type);
   RADIOLIB_ASSERT(state);
   if(type == RADIOLIB_LR2021_PACKET_TYPE_GFSK) {
-    RADIOLIB_CHECK_RANGE(br, 0.5f, 2000.0f, RADIOLIB_ERR_INVALID_BIT_RATE);
+    RADIOLIB_CHECK_RANGE(br, 500, RADIOLIB_UNIT_MEGA(2), RADIOLIB_ERR_INVALID_BIT_RATE);
     //! \TODO: [LR2021] implement fractional bit rate configuration
-    this->bitRate = br * 1000.0f;
+    this->bitRate = br;
     state = setGfskModulationParams(this->bitRate, this->pulseShape, this->rxBandwidth, this->frequencyDev);
     return(state);
   
   } else if(type == RADIOLIB_LR2021_PACKET_TYPE_OOK) {
-    RADIOLIB_CHECK_RANGE(br, 0.5f, 2000.0f, RADIOLIB_ERR_INVALID_BIT_RATE);
+    RADIOLIB_CHECK_RANGE(br, 500, RADIOLIB_UNIT_MEGA(2), RADIOLIB_ERR_INVALID_BIT_RATE);
     //! \TODO: [LR2021] implement fractional bit rate configuration
-    this->bitRate = br * 1000.0f;
+    this->bitRate = br;
     //! \TODO: [LR2021] implement OOK magnitude depth configuration
     state = setOokModulationParams(this->bitRate, this->pulseShape, this->rxBandwidth, RADIOLIB_LR2021_OOK_DEPTH_FULL);
     return(state);
     
   } else if(type == RADIOLIB_LR2021_PACKET_TYPE_FLRC) {
-     if((uint16_t)br == 260) {
-      this->bitRateFlrc = RADIOLIB_LR2021_FLRC_BR_260;
-    } else if((uint16_t)br == 325) {
-      this->bitRateFlrc = RADIOLIB_LR2021_FLRC_BR_325;
-    } else if((uint16_t)br == 520) {
-      this->bitRateFlrc = RADIOLIB_LR2021_FLRC_BR_520;
-    } else if((uint16_t)br == 650) {
-      this->bitRateFlrc = RADIOLIB_LR2021_FLRC_BR_650;
-    } else if((uint16_t)br == 1040) {
-      this->bitRateFlrc = RADIOLIB_LR2021_FLRC_BR_1040;
-    } else if((uint16_t)br == 1300) {
-      this->bitRateFlrc = RADIOLIB_LR2021_FLRC_BR_1300;
-    } else if((uint16_t)br == 2080) {
-      this->bitRateFlrc = RADIOLIB_LR2021_FLRC_BR_2080;
-    } else if((uint16_t)br == 2600) {
-      this->bitRateFlrc = RADIOLIB_LR2021_FLRC_BR_2600;
-    } else {
-      return(RADIOLIB_ERR_INVALID_BIT_RATE);
+    switch(br) {
+      case(RADIOLIB_UNIT_KILO(260)):
+        this->bitRateFlrc = RADIOLIB_LR2021_FLRC_BR_260;
+        break;
+      case(RADIOLIB_UNIT_KILO(325)):
+        this->bitRateFlrc = RADIOLIB_LR2021_FLRC_BR_325;
+        break;
+      case(RADIOLIB_UNIT_KILO(520)):
+        this->bitRateFlrc = RADIOLIB_LR2021_FLRC_BR_520;
+        break;
+      case(RADIOLIB_UNIT_KILO(650)):
+        this->bitRateFlrc = RADIOLIB_LR2021_FLRC_BR_650;
+        break;
+      case(RADIOLIB_UNIT_KILO(1040)):
+        this->bitRateFlrc = RADIOLIB_LR2021_FLRC_BR_1040;
+        break;
+      case(RADIOLIB_UNIT_KILO(1300)):
+        this->bitRateFlrc = RADIOLIB_LR2021_FLRC_BR_1300;
+        break;
+      case(RADIOLIB_UNIT_KILO(2080)):
+        this->bitRateFlrc = RADIOLIB_LR2021_FLRC_BR_2080;
+        break;
+      case(RADIOLIB_UNIT_KILO(2600)):
+        this->bitRateFlrc = RADIOLIB_LR2021_FLRC_BR_2600;
+        break;
+      default:
+        return(RADIOLIB_ERR_INVALID_BIT_RATE);
     }
-
+    
     // it is slightly weird to reuse the GFSK bitrate variable in this way
     // but if GFSK gets enabled it should get reset anyway ... I think
     this->bitRate = br;
@@ -574,7 +621,7 @@ int16_t LR2021::setBitRate(float br) {
   return(RADIOLIB_ERR_WRONG_MODEM);  
 }
 
-int16_t LR2021::setFrequencyDeviation(float freqDev) {
+int16_t LR2021::setFrequencyDeviation(uint32_t freqDev) {
   // check active modem
   uint8_t type = RADIOLIB_LR2021_PACKET_TYPE_NONE;
   int16_t state = getPacketType(&type);
@@ -584,18 +631,15 @@ int16_t LR2021::setFrequencyDeviation(float freqDev) {
   }
 
   // set frequency deviation to lowest available setting (required for digimodes)
-  float newFreqDev = freqDev;
-  if(freqDev < 0.6f) {
-    newFreqDev = 0.6f;
-  }
+  uint32_t newFreqDev = freqDev ? freqDev : 600;
 
-  RADIOLIB_CHECK_RANGE(newFreqDev, 0.6f, 500.0f, RADIOLIB_ERR_INVALID_FREQUENCY_DEVIATION);
-  this->frequencyDev = newFreqDev * 1000.0f;
+  RADIOLIB_CHECK_RANGE(newFreqDev, 600, RADIOLIB_UNIT_KILO(500), RADIOLIB_ERR_INVALID_FREQUENCY_DEVIATION);
+  this->frequencyDev = newFreqDev;
   state = setGfskModulationParams(this->bitRate, this->pulseShape, this->rxBandwidth, this->frequencyDev);
   return(state);
 }
 
-int16_t LR2021::setRxBandwidth(float rxBw) {
+int16_t LR2021::setRxBandwidth(uint32_t rxBw) {
   // check active modem
   uint8_t type = RADIOLIB_LR2021_PACKET_TYPE_NONE;
   int16_t state = getPacketType(&type);
@@ -604,6 +648,13 @@ int16_t LR2021::setRxBandwidth(float rxBw) {
        (type == RADIOLIB_LR2021_PACKET_TYPE_OOK))) {
     return(RADIOLIB_ERR_WRONG_MODEM);
   }
+
+  const uint32_t rxBwAvg[] = {
+    5300, 6600, 8500, 10800, 13400, 17000, 21100, 26400,
+    34100, 42400, 52900, 68200, 84700, 105800, 136400,
+    169500, 211600, 272900, 339000, 423300, 515900,
+    611100, 717900, 940100, 1666500, 2444000, 2871000,
+  };
 
   const uint8_t rxBwLut[] = {
     RADIOLIB_LR2021_GFSK_OOK_RX_BW_4_8,
@@ -636,7 +687,7 @@ int16_t LR2021::setRxBandwidth(float rxBw) {
     RADIOLIB_LR2021_GFSK_OOK_RX_BW_3076,
   };
 
-  state = findRxBw(rxBw, rxBwLut, sizeof(rxBwLut)/sizeof(rxBwLut[0]), 3076.0f, &this->rxBandwidth);
+  state = findRxBw(rxBw, rxBwAvg, rxBwLut, sizeof(rxBwLut)/sizeof(rxBwLut[0]), RADIOLIB_UNIT_KILO(3076), &this->rxBandwidth);
   RADIOLIB_ASSERT(state);
 
   // update modulation parameters
@@ -661,10 +712,13 @@ int16_t LR2021::setSyncWord(uint8_t* syncWord, size_t len) {
   uint32_t sync = 0;
   switch(type) {
     case(RADIOLIB_LR2021_PACKET_TYPE_GFSK):
+      // update sync word length
+      this->syncWordLength = len*8;
+
       // default to MSB-first
       return(setGfskSyncword(const_cast<const uint8_t*>(syncWord), len, true));
     
-      case(RADIOLIB_LR2021_PACKET_TYPE_OOK):
+    case(RADIOLIB_LR2021_PACKET_TYPE_OOK):
       // default to MSB-first
       return(setOokSyncword(const_cast<const uint8_t*>(syncWord), len, true));
     
@@ -825,58 +879,6 @@ int16_t LR2021::setWhitening(bool enabled, uint16_t initial) {
   return(RADIOLIB_ERR_WRONG_MODEM);
 }
 
-int16_t LR2021::setDataRate(DataRate_t dr, ModemType_t modem ) {
-  // get the current modem
-  ModemType_t currentModem;
-  int16_t state = this->getModem(&currentModem);
-  RADIOLIB_ASSERT(state);
-
-  // switch over if the requested modem is different
-  if(modem != RADIOLIB_MODEM_NONE && modem != currentModem) {
-    state = this->standby();
-    RADIOLIB_ASSERT(state);
-    state = this->setModem(modem);
-    RADIOLIB_ASSERT(state);
-  }
-  
-  if(modem == RADIOLIB_MODEM_NONE) {
-    modem = currentModem;
-  }
-
-  // select interpretation based on modem
-  if(modem == RADIOLIB_MODEM_FSK) {
-    // set the bit rate
-    state = this->setBitRate(dr.fsk.bitRate);
-    RADIOLIB_ASSERT(state);
-
-    // set the frequency deviation
-    state = this->setFrequencyDeviation(dr.fsk.freqDev);
-
-  } else if(modem == RADIOLIB_MODEM_LORA) {
-    // set the spreading factor
-    state = this->setSpreadingFactor(dr.lora.spreadingFactor);
-    RADIOLIB_ASSERT(state);
-
-    // set the bandwidth
-    state = this->setBandwidth(dr.lora.bandwidth);
-    RADIOLIB_ASSERT(state);
-
-    // set the coding rate
-    state = this->setCodingRate(dr.lora.codingRate);
-  
-  } else if(modem == RADIOLIB_MODEM_LRFHSS) {
-    // set the basic config
-    state = this->setLrFhssConfig(dr.lrFhss.bw, dr.lrFhss.cr);
-    RADIOLIB_ASSERT(state);
-
-    // set hopping grid
-    this->lrFhssGrid = dr.lrFhss.narrowGrid ? RADIOLIB_LRXXXX_LR_FHSS_GRID_STEP_NON_FCC : RADIOLIB_LRXXXX_LR_FHSS_GRID_STEP_FCC;
-  
-  }
-
-  return(state);
-}
-
 int16_t LR2021::checkDataRate(DataRate_t dr, ModemType_t modem) {
   int16_t state = RADIOLIB_ERR_UNKNOWN;
 
@@ -888,13 +890,13 @@ int16_t LR2021::checkDataRate(DataRate_t dr, ModemType_t modem) {
 
   // select interpretation based on modem
   if(modem == RADIOLIB_MODEM_FSK) {
-    RADIOLIB_CHECK_RANGE(dr.fsk.bitRate, 0.5f, 2000.0f, RADIOLIB_ERR_INVALID_BIT_RATE);
-    RADIOLIB_CHECK_RANGE(dr.fsk.freqDev, 0.6f,  500.0f, RADIOLIB_ERR_INVALID_FREQUENCY_DEVIATION);
+    RADIOLIB_CHECK_RANGE(dr.fsk.bitRate, 500, RADIOLIB_UNIT_KILO(2000), RADIOLIB_ERR_INVALID_BIT_RATE);
+    RADIOLIB_CHECK_RANGE(dr.fsk.freqDev, 600, RADIOLIB_UNIT_KILO(500), RADIOLIB_ERR_INVALID_FREQUENCY_DEVIATION);
     return(RADIOLIB_ERR_NONE);
 
   } else if(modem == RADIOLIB_MODEM_LORA) {
     RADIOLIB_CHECK_RANGE(dr.lora.spreadingFactor, 5, 12, RADIOLIB_ERR_INVALID_SPREADING_FACTOR);
-    RADIOLIB_CHECK_RANGE(dr.lora.bandwidth, 0.0f, 510.0f, RADIOLIB_ERR_INVALID_BANDWIDTH);
+    RADIOLIB_CHECK_RANGE(dr.lora.bandwidth, 31250, RADIOLIB_UNIT_KILO(500), RADIOLIB_ERR_INVALID_BANDWIDTH);
     RADIOLIB_CHECK_RANGE(dr.lora.codingRate, 4, 8, RADIOLIB_ERR_INVALID_CODING_RATE);
     return(RADIOLIB_ERR_NONE);
   
@@ -903,7 +905,7 @@ int16_t LR2021::checkDataRate(DataRate_t dr, ModemType_t modem) {
   return(state);
 }
 
-int16_t LR2021::setLrFhssConfig(uint8_t bw, uint8_t cr, uint8_t hdrCount, uint16_t hopSeed) {
+int16_t LR2021::setLrFhssConfig(uint8_t bw, uint8_t cr, bool narrowGrid, uint8_t hdrCount, uint16_t hopSeed) {
   // check active modem
   uint8_t type = RADIOLIB_LR2021_PACKET_TYPE_NONE;
   int16_t state = getPacketType(&type);
@@ -913,6 +915,7 @@ int16_t LR2021::setLrFhssConfig(uint8_t bw, uint8_t cr, uint8_t hdrCount, uint16
   }
 
   // check and cache all parameters
+  this->lrFhssGrid = narrowGrid ? RADIOLIB_LRXXXX_LR_FHSS_GRID_STEP_NON_FCC : RADIOLIB_LRXXXX_LR_FHSS_GRID_STEP_FCC;
   RADIOLIB_CHECK_RANGE((int8_t)cr, (int8_t)RADIOLIB_LRXXXX_LR_FHSS_CR_5_6, (int8_t)RADIOLIB_LRXXXX_LR_FHSS_CR_1_3, RADIOLIB_ERR_INVALID_CODING_RATE);
   this->lrFhssCr = cr;
   RADIOLIB_CHECK_RANGE((int8_t)bw, (int8_t)RADIOLIB_LRXXXX_LR_FHSS_BW_39_06, (int8_t)RADIOLIB_LRXXXX_LR_FHSS_BW_1574_2, RADIOLIB_ERR_INVALID_BANDWIDTH);
@@ -966,7 +969,16 @@ int16_t LR2021::setPacketMode(uint8_t mode, uint8_t len) {
     this->implicitLen = len;
     return(state);
   
+  } else if(type == RADIOLIB_LR2021_PACKET_TYPE_LORA) {
+    // LoRa mode does not have fixed/variable packet length mode, but it does have implicit/explicit header
+    // in terms of packet length, that is equivalent with fixed/variable packets, so let's assume that's what the user meant
+    if(mode == RADIOLIB_LR2021_GFSK_OOK_PACKET_FORMAT_FIXED) {
+      return(this->implicitHeader(len));
+    }
+    return(this->explicitHeader());
+  
   }
+
 
   return(RADIOLIB_ERR_WRONG_MODEM);
 }
@@ -991,11 +1003,11 @@ int16_t LR2021::setLoRaHeaderType(uint8_t hdrType, size_t len) {
 }
 
 int16_t LR2021::implicitHeader(size_t len) {
-  return(this->setLoRaHeaderType(RADIOLIB_LR2021_LORA_HEADER_IMPLICIT, len));
+  return(this->setLoRaHeaderType(RADIOLIB_LRXXXX_LORA_HEADER_IMPLICIT, len));
 }
 
 int16_t LR2021::explicitHeader() {
-  return(this->setLoRaHeaderType(RADIOLIB_LR2021_LORA_HEADER_EXPLICIT));
+  return(this->setLoRaHeaderType(RADIOLIB_LRXXXX_LORA_HEADER_EXPLICIT));
 }
 
 int16_t LR2021::setNodeAddress(uint8_t nodeAddr) {
@@ -1080,7 +1092,7 @@ int16_t LR2021::setSideDetector(const LR2021LoRaSideDetector_t* cfg, size_t numD
   }
 
   // if bandwidth is higher than 500 kHz, at most 2 side detectors are allowed
-  if((this->bandwidthKhz > 500.0f) && (numDetectors > 2)) {
+  if((this->bandwidthHz > RADIOLIB_UNIT_KILO(500)) && (numDetectors > 2)) {
     return(RADIOLIB_ERR_INVALID_SIDE_DETECT);
   }
 
@@ -1116,7 +1128,7 @@ int16_t LR2021::setSideDetector(const LR2021LoRaSideDetector_t* cfg, size_t numD
   }
 
   // sum of detection factors multiplied by BW must be smaller than 32E6
-  if(sumDetFactors*(uint32_t)this->bandwidthKhz >= 32000UL) {
+  if(sumDetFactors*(uint32_t)this->bandwidthHz >= RADIOLIB_UNIT_MEGA(32)) {
     return(RADIOLIB_ERR_INVALID_SIDE_DETECT);
   }
 
@@ -1152,6 +1164,41 @@ int16_t LR2021::setGain(uint8_t gain) {
     return(RADIOLIB_ERR_INVALID_GAIN);
   }
   return(this->SPIcommand(RADIOLIB_LR2021_CMD_SET_AGC_GAIN_MANUAL, true, &gain, sizeof(gain)));
+}
+
+int16_t LR2021::setTempCompensationInternal(uint8_t mode) {
+  // the chip rejects temperature compensation when TCXO is used
+  if(this->tcxoVoltage != RadioLibTCXOVoltage_t::VoltageNone) {
+    return(RADIOLIB_ERR_INVALID_TCXO_VOLTAGE);
+  }
+  if(mode > RADIOLIB_LR2021_TEMP_COMP_ABSOLUTE) {
+    return(RADIOLIB_ERR_UNSUPPORTED);
+  }
+  return(this->SPIcommand(RADIOLIB_LR2021_CMD_SET_TEMP_COMP_CFG, true, &mode, sizeof(mode)));
+}
+
+int16_t LR2021::setTempCompensationNTC(uint8_t mode, uint16_t rRatio, uint16_t betaK, uint8_t delay) {
+  // the chip rejects temperature compensation when TCXO is used
+  if(this->tcxoVoltage != RadioLibTCXOVoltage_t::VoltageNone) {
+    return(RADIOLIB_ERR_INVALID_TCXO_VOLTAGE);
+  }
+  // the NTC only acts on top of relative or absolute compensation
+  if((mode != RADIOLIB_LR2021_TEMP_COMP_RELATIVE) && (mode != RADIOLIB_LR2021_TEMP_COMP_ABSOLUTE)) {
+    return(RADIOLIB_ERR_UNSUPPORTED);
+  }
+
+  // ratio is 10 bits with 9 fractional bits, rounded from thousandths, beta is 12 bits in 2 K steps
+  uint32_t ratio = ((uint32_t)rRatio * 512UL + 500UL) / 1000UL;
+  if((ratio == 0) || (ratio > 1023) || (betaK < 2) || (betaK > 8190)) {
+    return(RADIOLIB_ERR_INVALID_NTC_PARAMETERS);
+  }
+  uint16_t beta = (betaK + 1) / 2;
+  uint8_t buff[] = { (uint8_t)((ratio >> 8) & 0x03), (uint8_t)(ratio & 0xFF), (uint8_t)((beta >> 8) & 0x0F), (uint8_t)(beta & 0xFF), delay };
+  int16_t state = this->SPIcommand(RADIOLIB_LR2021_CMD_SET_NTC_PARAMS, true, buff, sizeof(buff));
+  RADIOLIB_ASSERT(state);
+
+  uint8_t cfg = mode | RADIOLIB_LR2021_TEMP_COMP_NTC_ENABLED;
+  return(this->SPIcommand(RADIOLIB_LR2021_CMD_SET_TEMP_COMP_CFG, true, &cfg, sizeof(cfg)));
 }
 
 #endif

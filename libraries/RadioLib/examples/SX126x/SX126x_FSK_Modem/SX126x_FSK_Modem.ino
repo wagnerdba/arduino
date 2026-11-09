@@ -37,10 +37,15 @@ Radio radio = new RadioModule();
 void setup() {
   Serial.begin(9600);
 
+  // before calling begin(), correct crystal has to be selected
+  // most SX126x have a TCXO which needs 1.6V reference
+  // set to 0 if your radio has an XTAL
+  radio.tcxoVoltage = RadioLibTCXOVoltage_t::Voltage1V6;
+
   // initialize SX1262 at 434 MHz
   Serial.print(F("[SX1262] Initializing ... "));
   ConfigFSK_t config;
-  config.frequency = 434;
+  config.frequency = RADIOLIB_UNIT_MEGA(434);
   int state = radio.beginFSK(config);
   if (state == RADIOLIB_ERR_NONE) {
     Serial.println(F("success!"));
@@ -57,12 +62,12 @@ void setup() {
 
   // the following settings can also
   // be modified at run-time
-  state = radio.setFrequency(433.5);
-  state = radio.setBitRate(100.0);
-  state = radio.setFrequencyDeviation(10.0);
-  state = radio.setRxBandwidth(250.0);
-  state = radio.setOutputPower(10.0);
-  state = radio.setCurrentLimit(100.0);
+  state = radio.setFrequency(433500000);
+  state = radio.setBitRate(RADIOLIB_UNIT_KILO(100));
+  state = radio.setFrequencyDeviation(RADIOLIB_UNIT_KILO(10));
+  state = radio.setRxBandwidth(RADIOLIB_UNIT_KILO(250));
+  state = radio.setOutputPower(10);
+  state = radio.setCurrentLimit(RADIOLIB_UNIT_KILO(100));
   state = radio.setDataShaping(RADIOLIB_SHAPING_1_0);
   uint8_t syncWord[] = {0x01, 0x23, 0x45, 0x67,
                         0x89, 0xAB, 0xCD, 0xEF};

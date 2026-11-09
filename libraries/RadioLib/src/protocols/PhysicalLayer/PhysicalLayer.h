@@ -33,8 +33,8 @@ struct LoRaRate_t {
   /*! \brief LoRa spreading factor */
   uint8_t spreadingFactor;
   
-  /*! \brief LoRa bandwidth in kHz */
-  float bandwidth;
+  /*! \brief LoRa bandwidth in Hz */
+  uint32_t bandwidth;
 
   /*! \brief LoRa coding rate denominator */
   uint8_t codingRate;
@@ -45,11 +45,11 @@ struct LoRaRate_t {
   \brief Data rate structure interpretation in case FSK is used
 */
 struct FSKRate_t {
-  /*! \brief FSK bit rate in kbps */
-  float bitRate;
+  /*! \brief FSK bit rate in bps */
+  uint32_t bitRate;
   
-  /*! \brief FSK frequency deviation in kHz */
-  float freqDev;
+  /*! \brief FSK frequency deviation in Hz */
+  uint32_t freqDev;
 };
 
 /*!
@@ -139,8 +139,11 @@ struct CADScanConfig_t {
   /*! \brief Exit mode after signal detection is complete - module-specific value */
   uint8_t exitMode;
   
-  /*! \brief Timeout in microseconds */
-  RadioLibTime_t timeout;
+  /*! \brief Rx packet timeout in microseconds */
+  RadioLibTime_t rxTimeout;
+
+  /*! \brief Rx sync timeout in symbols */
+  RadioLibTime_t rxSymbols;
 
   /*! \brief Optional IRQ flags to set, bits offset by the value of RADIOLIB_IRQ_ */
   RadioLibIrqFlags_t irqFlags;
@@ -178,7 +181,10 @@ struct StandbyConfig_t {
 struct ReceiveConfig_t {
   /*! \brief  Raw timeout value. Some modules use this argument to specify operation mode (single vs. continuous receive). */
   uint32_t timeout;
-  
+
+  /*! \brief LoRa sync timeout, given as the number of LoRa symbols. */
+  uint16_t syncSymbols;
+
   /*! \brief Sets the IRQ flags. */
   RadioLibIrqFlags_t irqFlags;
   
@@ -277,11 +283,17 @@ enum RadioModeType_t {
 #define RADIOLIB_FLRC_CR_1_0                                    (0x02UL << 0)   //  7     0                  1 (un-coded)
 #define RADIOLIB_FLRC_CR_2_3                                    (0x03UL << 0)   //  7     0                  2/3
 
+#define RADIOLIB_LR_FHSS_BIT_RATE                               (488.28215f)    //  31    0     LR FHSS bit rate: 488.28215 bps
+#define RADIOLIB_LR_FHSS_HEADER_BITS                            (114)           //  7     0     LR FHSS packet bit widths: header
+#define RADIOLIB_LR_FHSS_FRAG_BITS                              (48)            //  7     0                                payload fragment
+#define RADIOLIB_LR_FHSS_BLOCK_PREAMBLE_BITS                    (2)             //  7     0                                block preamble
+#define RADIOLIB_LR_FHSS_BLOCK_BITS                             (RADIOLIB_LR_FHSS_FRAG_BITS + RADIOLIB_LR_FHSS_BLOCK_PREAMBLE_BITS)
+
 struct ConfigLoRa_t {
   /*! \brief Carrier frequency in MHz. Defaults to 434.0 MHz. */
-  float frequency = 434.0;
+  uint32_t frequency = RADIOLIB_UNIT_MEGA(434);
   /*! \brief LoRa bandwidth in kHz. Defaults to 125.0 kHz. */
-  float bandwidth = 125.0;
+  uint32_t bandwidth = RADIOLIB_UNIT_KILO(125);
   /*! \brief LoRa spreading factor. Defaults to 9. */
   uint8_t spreadingFactor = 9;
   /*! \brief LoRa coding rate. Defaults to 7 (coding rate 4/7). Allowed values range from 4 to 8. Note that a value of 4 means no coding,
@@ -297,13 +309,13 @@ struct ConfigLoRa_t {
 
 struct ConfigFSK_t {
   /*! \brief Carrier frequency in MHz. Defaults to 434.0 MHz. */
-  float frequency = 434.0;
+  uint32_t frequency = RADIOLIB_UNIT_MEGA(434);
   /*! \brief FSK bit rate in kbps. Defaults to 4.8 kbps. */
-  float bitRate = 4.8;
+  uint32_t bitRate = 4800;
   /*! \brief FSK frequency deviation in kHz. Defaults to 5.0 kHz. */
-  float frequencyDeviation = 5.0;
+  uint32_t frequencyDeviation = RADIOLIB_UNIT_KILO(5);
   /*! \brief FSK receiver bandwidth in kHz. Defaults to 125.0 kHz. */
-  float receiverBandwidth = 125.0;
+  uint32_t receiverBandwidth = RADIOLIB_UNIT_KILO(125);
   /*! \brief Output power in dBm. Defaults to 10 dBm. */
   int8_t power = 10;
   /*! \brief FSK preamble length in bits. Defaults to 16 bits. */
@@ -312,20 +324,20 @@ struct ConfigFSK_t {
 
 struct ConfigBPSK_t {
   /*! \brief Carrier frequency in MHz. Defaults to 434.0 MHz. */
-  float frequency = 434.0;
+  uint32_t frequency = RADIOLIB_UNIT_MEGA(434);
   /*! \brief FSK bit rate in kbps. Defaults to 4.8 kbps. */
-  float bitRate = 4.8;
+  uint32_t bitRate = 4800;
   /*! \brief Output power in dBm. Defaults to 10 dBm. */
   int8_t power = 10;
 };
 
 struct ConfigOOK_t {
   /*! \brief Carrier frequency in MHz. Defaults to 434.0 MHz. */
-  float frequency = 434.0;
+  uint32_t frequency = RADIOLIB_UNIT_MEGA(434);
   /*! \brief FSK bit rate in kbps. Defaults to 4.8 kbps. */
-  float bitRate = 4.8;
+  uint32_t bitRate = 4800;
   /*! \brief FSK receiver bandwidth in kHz. Defaults to 125.0 kHz. */
-  float receiverBandwidth = 125.0;
+  uint32_t receiverBandwidth = RADIOLIB_UNIT_KILO(125);
   /*! \brief Output power in dBm. Defaults to 10 dBm. */
   int8_t power = 10;
   /*! \brief FSK preamble length in bits. Defaults to 16 bits. */
@@ -334,7 +346,7 @@ struct ConfigOOK_t {
 
 struct ConfigLRFHSS_t {
   /*! \brief Carrier frequency in MHz. Defaults to 434.0 MHz. */
-  float frequency = 434.0;
+  uint32_t frequency = RADIOLIB_UNIT_MEGA(434);
   /*! \brief LR-FHSS bandwidth, one of RADIOLIB_LR_FHSS_BW_* values. Defaults to 722.66 kHz. */
   uint8_t bandwidth = RADIOLIB_LR_FHSS_BW_722_66;
   /*! \brief LR-FHSS coding rate, one of RADIOLIB_LR_FHSS_CR_* values. Defaults to 2/3 coding rate. */
@@ -347,9 +359,9 @@ struct ConfigLRFHSS_t {
 
 struct ConfigFLRC_t {
   /*! \brief Carrier frequency in MHz. Defaults to 434.0 MHz. */
-  float frequency = 434.0;
+  uint32_t frequency = RADIOLIB_UNIT_MEGA(434);
   /*! \brief FLRC bit rate in kbps. Defaults to 650 kbps. */
-  float bitRate = 650.0;
+  uint32_t bitRate = RADIOLIB_UNIT_KILO(650);
   /*! \brief FLRC coding rate. Defaults to RADIOLIB_FLRC_CR_2_3 (coding rate 2/3). */
   uint8_t codingRate = RADIOLIB_FLRC_CR_2_3;
   /*! \brief Output power in dBm. Defaults to 10 dBm. */
@@ -362,11 +374,11 @@ struct ConfigFLRC_t {
 
 struct ConfigBLE_t {
   /*! \brief Carrier frequency in MHz. Defaults to 2400.0 MHz. */
-  float frequency = 2400.0;
+  uint32_t frequency = RADIOLIB_UNIT_MEGA(2400);
   /*! \brief BLE bit rate in kbps. Defaults to 800 kbps. */
   uint16_t bitRate = 800;
   /*! \brief BLE frequency deviation in kHz. Defaults to 400.0 kHz. */
-  float frequencyDeviation = 400.0;
+  uint32_t frequencyDeviation = RADIOLIB_UNIT_KILO(400);
   /*! \brief Output power in dBm. Defaults to 10 dBm. */
   int8_t power = 10;
   /*! \brief Time-bandwidth product of the Gaussian filter to be used for shaping. Defaults to 0.5. */
@@ -590,25 +602,62 @@ class PhysicalLayer {
 
     /*!
       \brief Sets carrier frequency. Must be implemented in module class.
-      \param freq Carrier frequency to be set in MHz.
+      \param freq Carrier frequency to be set in Hz.
       \returns \ref status_codes
     */
-    virtual int16_t setFrequency(float freq);
+    virtual int16_t setFrequency(uint32_t freq);
 
     /*!
       \brief Sets FSK bit rate. Only available in FSK mode. Must be implemented in module class.
-      \param br Bit rate to be set (in kbps).
+      \param br Bit rate to be set (in bps).
       \returns \ref status_codes
     */
-    virtual int16_t setBitRate(float br);
+    virtual int16_t setBitRate(uint32_t br);
 
     /*!
       \brief Sets FSK frequency deviation from carrier frequency. Only available in FSK mode.
       Must be implemented in module class.
-      \param freqDev Frequency deviation to be set (in kHz).
+      \param freqDev Frequency deviation to be set in Hz.
       \returns \ref status_codes
     */
-    virtual int16_t setFrequencyDeviation(float freqDev);
+    virtual int16_t setFrequencyDeviation(uint32_t freqDev);
+
+    /*!
+      \brief Sets LoRa spreading factor. Must be implemented in module class.
+      \param sf LoRa spreading factor to be set.
+      \returns \ref status_codes
+    */
+    virtual int16_t setSpreadingFactor(uint8_t sf);
+
+    /*!
+      \brief Sets LoRa bandwidth. Must be implemented in module class.
+      \param bw LoRa bandwidth to be set in Hz.
+      \returns \ref status_codes
+    */
+    virtual int16_t setBandwidth(uint32_t bw);
+
+    /*!
+      \brief Sets LoRa coding rate denominator. Must be implemented in module class.
+      \param cr LoRa coding rate denominator to be set. Allowed values range from 4 to 8.
+       Note that a value of 4 means no coding, is undocumented and not recommended without your own FEC.
+      \param longInterleave Enable long interleaver when set to true.
+      Note that with long interleaver enabled, CR 4/7 is not possible, 
+      there are packet length restrictions,
+      and it is not compatible with SX127x radios!
+      \returns \ref status_codes
+    */
+    virtual int16_t setCodingRate(uint8_t cr, bool longInterleave = false);
+
+    /*!
+      \brief Sets LR-FHSS configuration. Must be implemented in module class.
+      \param bw LR-FHSS bandwidth, one of RADIOLIB_LR_FHSS_BW_* values.
+      \param cr LR-FHSS coding rate, one of RADIOLIB_LR_FHSS_CR_* values.
+      \param narrowGrid True for narrow (non-FCC) hopping grid; false for wide (FCC) grid.
+      \param hdrCount Header packet count, 1 - 4. Defaults to 3.
+      \param hopSeed 9-bit seed number for PRNG generation of the hopping sequence. Defaults to 0x13A.
+      \returns \ref status_codes
+    */
+    virtual int16_t setLrFhssConfig(uint8_t bw, uint8_t cr, bool narrowGrid, uint8_t hdrCount = 3, uint16_t hopSeed = 0x13A);
 
     /*!
       \brief Sets GFSK data shaping. Only available in FSK mode. Must be implemented in module class.
@@ -639,12 +688,31 @@ class PhysicalLayer {
     virtual int16_t setOutputPower(int8_t power);
 
     /*!
-      \brief Check if output power is configurable. Must be implemented in module class if the module supports it.
-      \param power Output power in dBm. The allowed range depends on the module used.
-      \param clipped Clipped output power value to what is possible within the module's range.
+      \brief Sets offset of the output power. Useful for devices where the radio has an external power amplifier,
+      or of the RF system has a known loss between the radio and the antenna.
+      NOTE: This method must be called BEFORE any calls to radio.begin() or radio.setOutputPower()
+      for the offset to be applied!
+      \param offset Offset to apply. If the PA has a linear gain of 12 dB, call radio.setOutputPowerOffset(12).
+      If the setup has 1 dB of loss, call radio.setOutputPowerOffset(-1) to compensate.
       \returns \ref status_codes
     */
-    virtual int16_t checkOutputPower(int8_t power, int8_t* clipped);
+    int16_t setOutputPowerOffset(int8_t offset);
+
+    /*!
+      \brief Sets offset of the output power. Useful for devices where the radio has an external power amplifier,
+      or of the RF system has a known loss between the radio and the antenna.
+      This overload allows to compensate a non-linear PA gain, dependant on the radio power output via a lookup table.
+      NOTE: This method must be called BEFORE any calls to radio.begin() or radio.setOutputPower()
+      for the offset to be applied!
+      \param lut Pointer to a lookup table to use - for each output power configuration, value from the lookup table
+      will be applied as offset.
+      NOTE: The lookup table must be monotonically decreasing (values are always either lowering 
+      or remaining the same) and in 1 dB steps.
+      \param steps Number of steps/entries in the lookup table - this depends on the range of output power
+      by the radio module. Different radio modules support different output power ranges!
+      \returns \ref status_codes
+    */
+    int16_t setOutputPowerOffset(const int8_t* lut, size_t steps);
 
     /*!
       \brief Set sync word. Must be implemented in module class if the module supports it.
@@ -656,10 +724,11 @@ class PhysicalLayer {
 
     /*!
       \brief Set preamble length. Must be implemented in module class if the module supports it.
-      \param len Preamble length in bytes. Maximum length depends on the module used.
+      \param len Preamble length in symbols (LoRa) or bits (FSK). Maximum length depends on the module used.
+      \param detLen Minimum detected preamble length during reception. Allowed values depend on the module used.
       \returns \ref status_codes
     */
-    virtual int16_t setPreambleLength(size_t len);
+    virtual int16_t setPreambleLength(size_t len, size_t detLen = 0xFFFFFFFF);
     
     /*!
       \brief Set data rate. Must be implemented in module class if the module supports it.
@@ -697,6 +766,15 @@ class PhysicalLayer {
       \returns SNR of the last received packet in dB.
     */
     virtual float getSNR();
+
+    /*!
+      \brief Convert from bytes to LoRa symbols.
+      \param dr Data rate.
+      \param pc Packet configuration.
+      \param len Payload length in bytes.
+      \returns The total number of LoRa symbols, including preamble, sync and possible header.
+    */
+    static float getNumSymbols(DataRate_t dr, PacketConfig_t pc, size_t len);
     
     /*!
       \brief Calculate the expected time-on-air for a given modem, data rate, packet configuration and payload size.
@@ -803,7 +881,7 @@ class PhysicalLayer {
       \brief Check whether the current communication channel is free or occupied. Performs CAD for LoRa modules,
       or RSSI measurement for FSK modules.
       \returns RADIOLIB_CHANNEL_FREE when channel is free,
-      RADIOLIB_PREAMBLE_DETECTEDwhen occupied or other \ref status_codes.
+      RADIOLIB_LORA_DETECTED when occupied or other \ref status_codes.
     */
     virtual int16_t scanChannel();
 
@@ -812,7 +890,7 @@ class PhysicalLayer {
       or RSSI measurement for FSK modules.
       \param config Scan configuration structure. Interpretation depends on currently active modem.
       \returns RADIOLIB_CHANNEL_FREE when channel is free,
-      RADIOLIB_PREAMBLE_DETECTEDwhen occupied or other \ref status_codes.
+      RADIOLIB_LORA_DETECTED when occupied or other \ref status_codes.
     */
     virtual int16_t scanChannel(const ChannelScanConfig_t &config);
 
@@ -887,37 +965,16 @@ class PhysicalLayer {
     #endif
 
     /*!
-      \brief Sets interrupt service routine to call when a packet is received.
+      \brief Sets interrupt service routine to call when IRQ is activated.
       \param func ISR to call.
+      \param rising Whether to activate on rising (true) or falling (false) edge, defaults to rising.
     */
-    virtual void setPacketReceivedAction(void (*func)(void));
+    virtual void setIrqAction(void (*func)(void), bool rising = true);
 
     /*!
-      \brief Clears interrupt service routine to call when a packet is received.
+      \brief Clears interrupt service routine to call when IRQ is activated.
     */
-    virtual void clearPacketReceivedAction();
-
-    /*!
-      \brief Sets interrupt service routine to call when a packet is sent.
-      \param func ISR to call.
-    */
-    virtual void setPacketSentAction(void (*func)(void));
-
-    /*!
-      \brief Clears interrupt service routine to call when a packet is sent.
-    */
-    virtual void clearPacketSentAction();
-    
-    /*!
-      \brief Sets interrupt service routine to call when a channel scan is finished.
-      \param func ISR to call.
-    */
-    virtual void setChannelScanAction(void (*func)(void));
-
-    /*!
-      \brief Clears interrupt service routine to call when a channel scan is finished.
-    */
-    virtual void clearChannelScanAction();
+    virtual void clearIrqAction();
 
     /*!
       \brief Set modem for the radio to use. Will perform full reset and reconfigure the radio
@@ -935,6 +992,18 @@ class PhysicalLayer {
     virtual int16_t getModem(ModemType_t* modem);
 
     /*!
+      \brief Read the operating mode the radio is in, as the chip reports it.
+      Unlike PhysicalLayer::stagedMode, which is what was last asked of the radio, this reads the
+      hardware, so a caller can tell a radio that has left a mode on its own - a receive that did not
+      survive a frame, or a chip that lost its state - from one that is still in it.
+      \param mode Pointer to the variable to save the mode into. A mode the chip reports that has no
+      RadioModeType_t equivalent, frequency synthesis for example, is reported as
+      RADIOLIB_RADIO_MODE_NONE.
+      \returns \ref status_codes
+    */
+    virtual int16_t getMode(RadioModeType_t* mode);
+
+    /*!
       \brief Stage mode of the radio to be launched later using launchMode.
       \param mode Radio mode to prepare.
       \param cfg Configuration of this mode (mode-dependent).
@@ -947,6 +1016,28 @@ class PhysicalLayer {
       \returns \ref status_codes
     */
     virtual int16_t launchMode();
+
+    /*!
+      \brief Write a payload into the transmit buffer without staging or starting a transmission.
+      This allows the payload write, which is the slowest part of starting a transmission, to be done
+      while the radio is busy with something else - during a channel scan, for example. The
+      transmission is staged afterwards by calling stageMode with RADIOLIB_RADIO_MODE_TX and
+      RadioModeConfig_t::transmit.data set to NULL, which sets the packet parameters and the IRQ
+      mapping for the payload already in the buffer; transmit.len must still be set to its length.
+      The buffer holds exactly this payload after the call, whether or not one was written before.
+      \param data Payload to write into the transmit buffer.
+      \param len Payload length in bytes.
+      \returns \ref status_codes
+    */
+    virtual int16_t writeTxBuffer(const uint8_t* data, size_t len);
+
+    /*!
+      \brief Discard a payload previously written by writeTxBuffer. On radios whose transmit buffer
+      is simply overwritten by the next write there is nothing to discard, and this reports success
+      without touching the radio.
+      \returns \ref status_codes
+    */
+    virtual int16_t clearTxBuffer();
 
     #if RADIOLIB_INTERRUPT_TIMING
 
@@ -984,11 +1075,40 @@ class PhysicalLayer {
     */
     int16_t calculateRxDutyCycle(size_t txPreLen, size_t rxPreLen, uint16_t minSymbols, DataRate_t* dr, uint32_t* wakePeriod, uint32_t* sleepPeriod);
 
+    /*!
+      \brief Get the minimum output power supported by the radio.
+      This includes any previously configured PA offset.
+      \returns The minimum supported output power in dBm.
+    */
+    int8_t getOutputPowerMin() const { return(powerMin); }
+    
+    /*!
+      \brief Get the maximum output power supported by the radio.
+      This includes any previously configured PA offset.
+      \returns The maximum supported output power in dBm.
+    */
+    int8_t getOutputPowerMax() const { return(powerMax); }
+
 #if !RADIOLIB_GODMODE
   protected:
 #endif
+    int8_t powerMin = 0, powerMax = 0;
+    uint8_t paSteps = 0;
+    
     uint32_t irqMap[10] = { 0 };
     RadioModeType_t stagedMode = RADIOLIB_RADIO_MODE_NONE;
+    
+    /*!
+      \brief Apply output power offset and check power configuration range is feasible for the radio.
+      \param base Base value of the PA lookup table.
+      NOTE: If the radio implements multiple power-devepended transmit paths,
+      the base needs to be the minimum!
+      \param pwrReq Pointer to variable holding power requested by the user.
+      \param pwrRadio Pointer to variable where resulting power with applied offset will be saved.
+      \returns \ref status_codes
+    */
+    int16_t applyOutputPowerOffset(int8_t base, const int8_t* pwrReq, int8_t* pwrRadio);
+    int16_t findRxBw(uint32_t rxBw, const uint32_t* rxBwAvg, const uint8_t* lut, size_t lutSize, uint32_t rxBwMax, uint8_t* val);
 
 #if !RADIOLIB_EXCLUDE_DIRECT_RECEIVE
     void updateDirectBuffer(uint8_t bit);
@@ -1025,6 +1145,8 @@ class PhysicalLayer {
     friend class FT8Client;
     friend class LoRaWANNode;
     friend class M17Client;
+
+    int8_t paOffsetLut[48] = { 0 };
 };
 
 #endif

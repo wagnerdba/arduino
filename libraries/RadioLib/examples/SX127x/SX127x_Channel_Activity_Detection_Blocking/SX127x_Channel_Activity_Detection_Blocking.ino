@@ -45,7 +45,7 @@ void setup() {
   // initialize SX1278 at 434 MHz
   Serial.print(F("[SX1278] Initializing ... "));
   ConfigLoRa_t config;
-  config.frequency = 434;
+  config.frequency = RADIOLIB_UNIT_MEGA(434);
   int state = radio.begin(config);
   if (state == RADIOLIB_ERR_NONE) {
     Serial.println(F("success!"));
@@ -62,7 +62,7 @@ void loop() {
   // start scanning current channel
   int state = radio.scanChannel();
 
-  if (state == RADIOLIB_PREAMBLE_DETECTED) {
+  if (state == RADIOLIB_LORA_DETECTED) {
     // LoRa preamble was detected
     Serial.println(F("detected preamble!"));
 

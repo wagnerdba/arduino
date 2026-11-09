@@ -45,17 +45,19 @@ Module& Module::operator=(const Module& mod) {
 }
 
 static volatile const char rlb_info[] = RADIOLIB_INFO;
-void Module::init() {
-  this->hal->init();
+int16_t Module::init() {
+  int16_t state = this->hal->init();
+  RADIOLIB_ASSERT(state);
+
   this->hal->pinMode(csPin, this->hal->GpioModeOutput);
   this->hal->digitalWrite(csPin, this->hal->GpioLevelHigh);
   RADIOLIB_DEBUG_BASIC_PRINTLN(RADIOLIB_INFO);
   RADIOLIB_VALUE_USED(rlb_info);
+  return(state);
 }
 
-void Module::term() {
-  // stop hardware interfaces (if they were initialized by the library)
-  this->hal->term();
+int16_t Module::term() {
+  return(this->hal->term());
 }
 
 int16_t Module::SPIgetRegValue(uint32_t reg, uint8_t msb, uint8_t lsb) {
@@ -217,9 +219,15 @@ void Module::SPItransfer(uint16_t cmd, uint32_t reg, const uint8_t* dataOut, uin
   // do the transfer
   this->hal->spiBeginTransaction();
   this->hal->digitalWrite(this->csPin, this->hal->GpioLevelLow);
-  this->hal->spiTransfer(buffOut, buffLen, buffIn);
+  int16_t state = this->hal->spiTransfer(buffOut, buffLen, buffIn);
   this->hal->digitalWrite(this->csPin, this->hal->GpioLevelHigh);
   this->hal->spiEndTransaction();
+
+  // value is reported via debug only
+  if(state != RADIOLIB_ERR_NONE) {
+    RADIOLIB_DEBUG_BASIC_PRINTLN("SPI Transaction failed, code %d\n", state);
+    return;
+  }
   
   // copy the data
   if(cmd == spiConfig.cmds[RADIOLIB_MODULE_SPI_COMMAND_READ]) {
@@ -362,9 +370,8 @@ int16_t Module::SPItransferStream(const uint8_t* cmd, uint8_t cmdLen, bool write
       while(this->hal->digitalRead(this->gpioPin)) {
         this->hal->yield();
 
-        // this timeout check triggers a false positive from cppcheck
-        // cppcheck-suppress unsignedLessThanZero
-        if(this->hal->millis() - start >= this->spiConfig.timeout) {
+        // wrap-safe duration check; signed cast avoids a cppcheck false positive
+        if((long)(this->hal->millis() - start - this->spiConfig.timeout) >= 0) {
           RADIOLIB_DEBUG_BASIC_PRINTLN("GPIO pre-transfer timeout, is it connected?");
           #if !RADIOLIB_STATIC_ONLY
             delete[] buffOut;
@@ -400,9 +407,8 @@ int16_t Module::SPItransferStream(const uint8_t* cmd, uint8_t cmdLen, bool write
       while(this->hal->digitalRead(this->gpioPin)) {
         this->hal->yield();
         
-        // this timeout check triggers a false positive from cppcheck
-        // cppcheck-suppress unsignedLessThanZero
-        if(this->hal->millis() - start >= this->spiConfig.timeout) {
+        // wrap-safe duration check; signed cast avoids a cppcheck false positive
+        if((long)(this->hal->millis() - start - this->spiConfig.timeout) >= 0) {
           RADIOLIB_DEBUG_BASIC_PRINTLN("GPIO post-transfer timeout, is it connected?");
 
           // do not return yet to display the debug output
@@ -415,7 +421,7 @@ int16_t Module::SPItransferStream(const uint8_t* cmd, uint8_t cmdLen, bool write
   }
 
   // parse status (only if GPIO did not timeout)
-  if((state == RADIOLIB_ERR_NONE) && (this->spiConfig.parseStatusCb != nullptr) && (numBytes > 0)) {
+  if((state == RADIOLIB_ERR_NONE) && (this->spiConfig.parseStatusCb != nullptr) && (buffLen > this->spiConfig.statusPos)) {
     state = this->spiConfig.parseStatusCb(buffIn[this->spiConfig.statusPos]);
   }
   
@@ -427,6 +433,7 @@ int16_t Module::SPItransferStream(const uint8_t* cmd, uint8_t cmdLen, bool write
 
   // print debug information
   #if RADIOLIB_DEBUG_SPI
+    RADIOLIB_DEBUG_SPI_PRINTLN("LEN\t%d", buffLen);
     // print command byte(s)
     RADIOLIB_DEBUG_SPI_PRINT("CMD");
     if(write) {
@@ -457,6 +464,10 @@ int16_t Module::SPItransferStream(const uint8_t* cmd, uint8_t cmdLen, bool write
       RADIOLIB_DEBUG_SPI_PRINT_NOTAG("%02X\t", buffIn[n]);
     }
     RADIOLIB_DEBUG_SPI_PRINTLN_NOTAG("");
+    // if there is enough data to evaluate the status byte, print it as well
+    if(buffLen > this->spiConfig.statusPos) {
+      RADIOLIB_DEBUG_SPI_PRINTLN("STAT\t%02X", buffIn[this->spiConfig.statusPos]);
+    }
   #endif
 
   #if !RADIOLIB_STATIC_ONLY
@@ -520,8 +531,15 @@ void Module::setRfSwitchTable(const uint32_t (&pins)[RFSWITCH_MAX_PINS], const R
   memcpy(this->rfSwitchPins, pins, sizeof(this->rfSwitchPins));
   this->rfSwitchTable = table;
   for(size_t i = 0; i < RFSWITCH_MAX_PINS; i++) {
+    // skip pins not controlled by the MCU (NC or radio-controlled DIO pins)
+    if(pins[i] & RFSWITCH_PIN_FLAG) { continue; }
     this->hal->pinMode(pins[i], this->hal->GpioModeOutput);
   }
+}
+
+void Module::getRfSwitchTable(uint32_t* pins, const RfSwitchMode_t** table) {
+  if(pins) { memcpy(pins, this->rfSwitchPins, sizeof(this->rfSwitchPins)); }
+  if(table) { *table = this->rfSwitchTable; }
 }
 
 const Module::RfSwitchMode_t *Module::findRfSwitchMode(uint8_t mode) const {

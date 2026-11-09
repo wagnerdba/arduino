@@ -6,6 +6,9 @@ CC1101::CC1101(Module* module) : PhysicalLayer() {
   this->freqStep = RADIOLIB_CC1101_FREQUENCY_STEP_SIZE;
   this->maxPacketLength = RADIOLIB_CC1101_MAX_PACKET_LENGTH;
   this->mod = module;
+  this->powerMin = RADIOLIB_CC1101_POUT_MIN;
+  this->powerMax = RADIOLIB_CC1101_POUT_MAX;
+  this->paSteps = 8;
 }
 
 int16_t CC1101::begin(const ConfigFSK_t& cfg) {
@@ -14,32 +17,10 @@ int16_t CC1101::begin(const ConfigFSK_t& cfg) {
   return(this->beginCommon(cfg));
 }
 
-int16_t CC1101::begin(float freq, float br, float freqDev, float rxBw, int8_t pwr, uint8_t preambleLength) {
-  ConfigFSK_t cfg;
-  cfg.frequency = freq;
-  cfg.bitRate = br;
-  cfg.frequencyDeviation = freqDev;
-  cfg.receiverBandwidth = rxBw;
-  cfg.power = pwr;
-  cfg.preambleLength = preambleLength;
-  return(this->begin(cfg));
-}
-
 int16_t CC1101::beginFSK4(const ConfigFSK_t& cfg) {
   // set the modulation and execute the common part
   this->modulation = RADIOLIB_CC1101_MOD_FORMAT_4_FSK;
   return(this->beginCommon(cfg));
-}
-
-int16_t CC1101::beginFSK4(float freq, float br, float freqDev, float rxBw, int8_t pwr, uint8_t preambleLength) {
-  ConfigFSK_t cfg;
-  cfg.frequency = freq;
-  cfg.bitRate = br;
-  cfg.frequencyDeviation = freqDev;
-  cfg.receiverBandwidth = rxBw;
-  cfg.power = pwr;
-  cfg.preambleLength = preambleLength;
-  return(this->beginFSK4(cfg));
 }
 
 void CC1101::reset() {
@@ -49,29 +30,38 @@ void CC1101::reset() {
 
 int16_t CC1101::transmit(const uint8_t* data, size_t len, uint8_t addr) {
   // calculate timeout (5ms + 500 % of expected time-on-air)
-  RadioLibTime_t timeout = 5 + (RadioLibTime_t)((((float)(len * 8)) / this->bitRate) * 5);
+  DataRate_t dr = { .fsk = { .bitRate = this->bitRate, .freqDev = 0 } };
+  PacketConfig_t pc = { 
+    .fsk = {
+      .preambleLength = 16,
+      .syncWordLength = 16, // sync word is always enabled
+      .crcLength = (uint8_t)(this->crcOn * 2), // when present, CRC is 2 bytes
+    },
+  };
+  RadioLibTime_t timeout = 5000UL + 5UL*calculateTimeOnAir(RADIOLIB_MODEM_FSK, dr, pc, len);
+  RADIOLIB_DEBUG_BASIC_PRINTLN("Timeout in %lu us", timeout);
 
   // start transmission
   int16_t state = startTransmit(data, len, addr);
   RADIOLIB_ASSERT(state);
 
   // wait for transmission start or timeout
-  RadioLibTime_t start = this->mod->hal->millis();
+  RadioLibTime_t start = this->mod->hal->micros();
   while(!this->mod->hal->digitalRead(this->mod->getGpio())) {
     this->mod->hal->yield();
 
-    if(this->mod->hal->millis() - start > timeout) {
+    if(this->mod->hal->micros() - start > timeout) {
       (void)finishTransmit();
       return(RADIOLIB_ERR_TX_TIMEOUT);
     }
   }
 
   // wait for transmission end or timeout
-  start = this->mod->hal->millis();
+  start = this->mod->hal->micros();
   while(this->mod->hal->digitalRead(this->mod->getGpio())) {
     this->mod->hal->yield();
 
-    if(this->mod->hal->millis() - start > timeout) {
+    if(this->mod->hal->micros() - start > timeout) {
       (void)finishTransmit();
       return(RADIOLIB_ERR_TX_TIMEOUT);
     }
@@ -218,22 +208,6 @@ void CC1101::clearGdo0Action() {
   this->mod->hal->detachInterrupt(this->mod->hal->pinToInterrupt(this->mod->getIrq()));
 }
 
-void CC1101::setPacketReceivedAction(void (*func)(void)) {
-  this->setGdo0Action(func, this->mod->hal->GpioInterruptRising);
-}
-
-void CC1101::clearPacketReceivedAction() {
-  this->clearGdo0Action();
-}
-
-void CC1101::setPacketSentAction(void (*func)(void)) {
-  this->setGdo2Action(func, this->mod->hal->GpioInterruptFalling);
-}
-
-void CC1101::clearPacketSentAction() {
-  this->clearGdo2Action();
-}
-
 void CC1101::setGdo2Action(void (*func)(void), uint32_t dir) {
   if(this->mod->getGpio() == RADIOLIB_NC) {
     return;
@@ -354,18 +328,25 @@ int16_t CC1101::startTransmit(const uint8_t* data, size_t len, uint8_t addr) {
 int16_t CC1101::finishTransmit() {
   // set mode to standby to disable transmitter/RF switch
   
-  // Check MARCSTATE for Idle to let anything in the FIFO empty
+  // expected MARCSTATE should be 0x01 (IDLE) except if TXOFF_RX is enabled
+  uint8_t expectedState = (SPIgetRegValue(RADIOLIB_CC1101_REG_MCSM1, 1, 0) == RADIOLIB_CC1101_TXOFF_RX ? 0x0D : 0x01);
+
+  // Check MARCSTATE is in expected state to let anything in the FIFO empty
   // Timeout is 2x FIFO transmit time
   RadioLibTime_t timeout = (1.0f/(this->bitRate))*(RADIOLIB_CC1101_FIFO_SIZE*2.0f);
   RadioLibTime_t start = this->mod->hal->millis();
-  while(SPIgetRegValue(RADIOLIB_CC1101_REG_MARCSTATE, 4, 0) != 0x01) {
+  
+  while(SPIgetRegValue(RADIOLIB_CC1101_REG_MARCSTATE, 4, 0) != expectedState) {
     if(this->mod->hal->millis() - start > timeout) {
       return(RADIOLIB_ERR_TX_TIMEOUT);
     }
   }
   
-  int16_t state = standby();
-  RADIOLIB_ASSERT(state);
+  // set standby mode only if IDLE state is expected
+  if (expectedState == 0x01) {
+    int16_t state = standby();
+    RADIOLIB_ASSERT(state);
+  }
 
   // flush Tx FIFO
   SPIsendCommand(RADIOLIB_CC1101_CMD_FLUSH_TX);
@@ -468,36 +449,34 @@ int16_t CC1101::finishReceive() {
   return(SPIsetRegValue(RADIOLIB_CC1101_REG_IOCFG0, RADIOLIB_CC1101_GDOX_HIGH_Z, 5, 0));
 }
 
-int16_t CC1101::setFrequency(float freq) {
+int16_t CC1101::setFrequency(uint32_t freq) {
   // check allowed frequency range
   #if RADIOLIB_CHECK_PARAMS
-  if(!(((freq >= 300.0f) && (freq <= 348.0f)) ||
-       ((freq >= 387.0f) && (freq <= 464.0f)) ||
-       ((freq >= 779.0f) && (freq <= 928.0f)))) {
-    return(RADIOLIB_ERR_INVALID_FREQUENCY);
+  if(!(((freq >= RADIOLIB_UNIT_MEGA(300)) && (freq <= RADIOLIB_UNIT_MEGA(348))) ||
+    ((freq >= RADIOLIB_UNIT_MEGA(387)) && (freq <= RADIOLIB_UNIT_MEGA(464))) ||
+    ((freq >= RADIOLIB_UNIT_MEGA(779)) && (freq <= RADIOLIB_UNIT_MEGA(928))))) {
+      return(RADIOLIB_ERR_INVALID_FREQUENCY);
   }
   #endif
 
   // set mode to standby
   SPIsendCommand(RADIOLIB_CC1101_CMD_IDLE);
 
-  //set carrier frequency
-  uint32_t base = 1;
-  uint32_t FRF = (freq * (base << 16)) / 26.0f;
+  // set carrier frequency - this has to use 64-bit ints to not overflow
+  uint32_t FRF = ((uint64_t)freq * (uint64_t)((uint64_t)1 << 16)) / RADIOLIB_UNIT_MEGA(RADIOLIB_CC1101_CRYSTAL_FREQ);
   int16_t state = SPIsetRegValue(RADIOLIB_CC1101_REG_FREQ2, (FRF & 0xFF0000) >> 16, 7, 0);
   state |= SPIsetRegValue(RADIOLIB_CC1101_REG_FREQ1, (FRF & 0x00FF00) >> 8, 7, 0);
   state |= SPIsetRegValue(RADIOLIB_CC1101_REG_FREQ0, FRF & 0x0000FF, 7, 0);
-
   if(state == RADIOLIB_ERR_NONE) {
     this->frequency = freq;
   }
 
-  // Update the TX power accordingly to new freq. (PA values depend on chosen freq)
+  // update the TX power according to new freqquency as PA values depend on chosen frequency
   return(setOutputPower(this->power));
 }
 
-int16_t CC1101::setBitRate(float br) {
-  RADIOLIB_CHECK_RANGE(br, 0.025f, 600.0f, RADIOLIB_ERR_INVALID_BIT_RATE);
+int16_t CC1101::setBitRate(uint32_t br) {
+  RADIOLIB_CHECK_RANGE(br, 25, RADIOLIB_UNIT_KILO(600), RADIOLIB_ERR_INVALID_BIT_RATE);
 
   // set mode to standby
   SPIsendCommand(RADIOLIB_CC1101_CMD_IDLE);
@@ -505,7 +484,7 @@ int16_t CC1101::setBitRate(float br) {
   // calculate exponent and mantissa values
   uint8_t e = 0;
   uint8_t m = 0;
-  getExpMant(br * 1000.0f, 256, 28, 14, e, m);
+  getExpMant(br, 256, 28, 14, e, m);
 
   // set bit rate value
   int16_t state = SPIsetRegValue(RADIOLIB_CC1101_REG_MDMCFG4, e, 3, 0);
@@ -517,30 +496,36 @@ int16_t CC1101::setBitRate(float br) {
 }
 
 int16_t CC1101::setBitRateTolerance(uint8_t brt) {
-  if (brt > 0x03)  return (RADIOLIB_ERR_INVALID_BIT_RATE_TOLERANCE_VALUE);
-
-  // Set Bit Rate tolerance
-  int16_t state = SPIsetRegValue(RADIOLIB_CC1101_REG_BSCFG, brt, 1, 0);
-
-  return(state);
+  if(brt > 0x03) { return(RADIOLIB_ERR_INVALID_BIT_RATE_TOLERANCE_VALUE); }
+  return(SPIsetRegValue(RADIOLIB_CC1101_REG_BSCFG, brt, 1, 0));
 }
 
-int16_t CC1101::setRxBandwidth(float rxBw) {
-  RADIOLIB_CHECK_RANGE(rxBw, 58.0f, 812.0f, RADIOLIB_ERR_INVALID_RX_BANDWIDTH);
+int16_t CC1101::setRxBandwidth(uint32_t rxBw) {
+  RADIOLIB_CHECK_RANGE(rxBw, RADIOLIB_UNIT_KILO(58), RADIOLIB_UNIT_KILO(812), RADIOLIB_ERR_INVALID_RX_BANDWIDTH);
 
   // set mode to standby
   SPIsendCommand(RADIOLIB_CC1101_CMD_IDLE);
 
-  // calculate exponent and mantissa values
-  for(int8_t e = 3; e >= 0; e--) {
-    for(int8_t m = 3; m >= 0; m --) {
-      float point = (RADIOLIB_CC1101_CRYSTAL_FREQ * 1000000.0f)/(8 * (m + 4) * ((uint32_t)1 << e));
-      if(fabs((rxBw * 1000.0f - point) <= 1000.0f)) {
-        // set Rx channel filter bandwidth
-        return(SPIsetRegValue(RADIOLIB_CC1101_REG_MDMCFG4, (e << 6) | (m << 4), 7, 4));
-      }
+  const uint32_t rxBwAvg[] = {
+    63000, 74500, 91500, 109000, 125500,
+    148500, 182500, 217500, 251500, 297500,
+    365500, 435000, 502500, 595000, 731000,
+  };
 
+  // iterate through the table and find whether the user-provided value
+  // is lower than the pre-computed average of the adjacent bandwidth values
+  // if it is, we consider that to be a match even though the actual value is not precise
+  for(size_t i = 0; i < sizeof(rxBwAvg)/sizeof(rxBwAvg[0]); i++) {
+    if(rxBw < rxBwAvg[i]) {
+      uint8_t e = 3 - i / 4;
+      uint8_t m = 3 - i % 4;
+      return(SPIsetRegValue(RADIOLIB_CC1101_REG_MDMCFG4, (e << 6) | (m << 4), 7, 4));
     }
+  }
+
+  // if nothing matched up to here, match with the last value
+  if(rxBw <= RADIOLIB_UNIT_KILO(812)) {
+    return(SPIsetRegValue(RADIOLIB_CC1101_REG_MDMCFG4, 0, 7, 4));
   }
 
   return(RADIOLIB_ERR_INVALID_RX_BANDWIDTH);
@@ -549,32 +534,18 @@ int16_t CC1101::setRxBandwidth(float rxBw) {
 int16_t CC1101::autoSetRxBandwidth() {
   // Uncertainty ~ +/- 40ppm for a cheap CC1101
   // Uncertainty * 2 for both transmitter and receiver
-  float uncertainty = ((this->frequency) * 40 * 2);
-  uncertainty = (uncertainty/1000); //Since bitrate is in kBit
-  float minbw = ((this->bitRate) + uncertainty);
-  
-  const int options[16] = { 58, 68, 81, 102, 116, 135, 162, 203, 232, 270, 325, 406, 464, 541, 650, 812 };
-  
-  for(int i = 0; i < 16; i++) {
-    if(options[i] > minbw) {
-      return(setRxBandwidth(options[i]));
-    }
-  }
-
-  return(RADIOLIB_ERR_UNKNOWN);
+  uint32_t uncertainty = (this->frequency * 40UL * 2UL)/1000000UL;
+  uint32_t minbw = this->bitRate + uncertainty;
+  if(minbw < RADIOLIB_UNIT_KILO(58)) { minbw = RADIOLIB_UNIT_KILO(58); }
+  return(setRxBandwidth(minbw));
 }
 
-int16_t CC1101::setFrequencyDeviation(float freqDev) {
+int16_t CC1101::setFrequencyDeviation(uint32_t freqDev) {
   // set frequency deviation to lowest available setting (required for digimodes)
-  float newFreqDev = freqDev;
-  if(freqDev < 0.0f) {
-    newFreqDev = 1.587f;
-  }
+  uint32_t newFreqDev = freqDev ? freqDev : 1587;
 
-  // check range unless 0 (special value)
-  if (freqDev != 0) {
-    RADIOLIB_CHECK_RANGE(newFreqDev, 1.587f, 380.8f, RADIOLIB_ERR_INVALID_FREQUENCY_DEVIATION);
-  }
+  // check range
+  RADIOLIB_CHECK_RANGE(newFreqDev, 1587, 380800, RADIOLIB_ERR_INVALID_FREQUENCY_DEVIATION);
 
   // set mode to standby
   SPIsendCommand(RADIOLIB_CC1101_CMD_IDLE);
@@ -582,7 +553,7 @@ int16_t CC1101::setFrequencyDeviation(float freqDev) {
   // calculate exponent and mantissa values
   uint8_t e = 0;
   uint8_t m = 0;
-  getExpMant(newFreqDev * 1000.0f, 8, 17, 7, e, m);
+  getExpMant(newFreqDev, 8, 17, 7, e, m);
 
   // set frequency deviation value
   int16_t state = SPIsetRegValue(RADIOLIB_CC1101_REG_DEVIATN, (e << 4), 6, 4);
@@ -591,15 +562,14 @@ int16_t CC1101::setFrequencyDeviation(float freqDev) {
   return(state);
 }
 
-int16_t CC1101::getFrequencyDeviation(float *freqDev) {
-  if (freqDev == NULL) {
+int16_t CC1101::getFrequencyDeviation(uint32_t *freqDev) {
+  if(freqDev == NULL) {
     return(RADIOLIB_ERR_NULL_POINTER);
   }
 
   // if ASK/OOK, deviation makes no sense
-  if (this->modulation == RADIOLIB_CC1101_MOD_FORMAT_ASK_OOK) {
+  if(this->modulation == RADIOLIB_CC1101_MOD_FORMAT_ASK_OOK) {
     *freqDev = 0.0;
-
     return(RADIOLIB_ERR_NONE);
   }
 
@@ -608,22 +578,59 @@ int16_t CC1101::getFrequencyDeviation(float *freqDev) {
   uint8_t m = (uint8_t)SPIgetRegValue(RADIOLIB_CC1101_REG_DEVIATN, 2, 0);
 
   // calculate frequency deviation (pag. 79 of the CC1101 datasheet):
-  //
   //   freqDev = (fXosc / 2^17) * (8 + m) * 2^e
-  //
-  *freqDev = (1000.0f / (uint32_t(1) << 17)) - (8 + m) * (uint32_t(1) << e);
+  *freqDev = (RADIOLIB_UNIT_MEGA(RADIOLIB_CC1101_CRYSTAL_FREQ) * (uint32_t)(8 + m) * (uint32_t(1) << e))/ (uint32_t(1) << 17);
 
   return(RADIOLIB_ERR_NONE);
 }
 
 int16_t CC1101::setOutputPower(int8_t pwr) {
   // check if power value is configurable
-  uint8_t powerRaw = 0;
-  int16_t state = checkOutputPower(pwr, NULL, &powerRaw);
-  RADIOLIB_ASSERT(state);
+  const int8_t allowedPwrs[8] = { -30, -20, -15, -10, 0, 5, 7, 10 };
+  bool found = false;
+  for(size_t i = 0; i < sizeof(allowedPwrs); i++) {
+    if(allowedPwrs[i] == pwr) {
+      found = true;
+      break;
+    }
+  }
+  if(!found) { return(RADIOLIB_ERR_INVALID_OUTPUT_POWER); }
 
   // store the value
   this->power = pwr;
+
+  // round to the known frequency settings
+  uint8_t f;
+  if(this->frequency < RADIOLIB_UNIT_KILO(374000)) {
+    // 315 MHz
+    f = 0;
+  } else if(this->frequency < RADIOLIB_UNIT_KILO(650500)) {
+    // 434 MHz
+    f = 1;
+  } else if(this->frequency < RADIOLIB_UNIT_KILO(891500)) {
+    // 868 MHz
+    f = 2;
+  } else {
+    // 915 MHz
+    f = 3;
+  }
+
+  // get raw power setting
+  uint8_t paTable[8][4] = {{0x12, 0x12, 0x03, 0x03},
+                           {0x0D, 0x0E, 0x0F, 0x0E},
+                           {0x1C, 0x1D, 0x1E, 0x1E},
+                           {0x34, 0x34, 0x27, 0x27},
+                           {0x51, 0x60, 0x50, 0x8E},
+                           {0x85, 0x84, 0x81, 0xCD},
+                           {0xCB, 0xC8, 0xCB, 0xC7},
+                           {0xC2, 0xC0, 0xC2, 0xC0}};
+  uint8_t powerRaw = paTable[0][0];
+  for(uint8_t i = 0; i < sizeof(allowedPwrs); i++) {
+    if(pwr == allowedPwrs[i]) {
+      powerRaw = paTable[i][f];
+      break;
+    }
+  }
 
   if(this->modulation == RADIOLIB_CC1101_MOD_FORMAT_ASK_OOK){
     // Amplitude modulation:
@@ -641,79 +648,11 @@ int16_t CC1101::setOutputPower(int8_t pwr) {
   }
 }
 
-int16_t CC1101::checkOutputPower(int8_t power, int8_t* clipped) {
-  return(checkOutputPower(power, clipped, NULL));
-}
-
-int16_t CC1101::checkOutputPower(int8_t power, int8_t* clipped, uint8_t* raw) {
-  const int8_t allowedPwrs[8] = { -30, -20, -15, -10, 0, 5, 7, 10 };
-
-  if(clipped) {
-    if(power <= -30) {
-      *clipped = -30;
-    } else if(power >= 10) {
-      *clipped = 10;
-    } else {
-      for(int i = 0; i < 8; i++) {
-        if(allowedPwrs[i] > power) {
-          break;
-        }
-        *clipped = allowedPwrs[i];
-      }
-    }
-  }
-
-  // if just a check occurs (and not requesting the raw power value), return now
-  if(!raw) {
-    for(size_t i = 0; i < sizeof(allowedPwrs); i++) {
-      if(allowedPwrs[i] == power) {
-        return(RADIOLIB_ERR_NONE);
-      }
-    }
-    return(RADIOLIB_ERR_INVALID_OUTPUT_POWER);
-  }
-
-  // round to the known frequency settings
-  uint8_t f;
-  if(this->frequency < 374.0f) {
-    // 315 MHz
-    f = 0;
-  } else if(this->frequency < 650.5f) {
-    // 434 MHz
-    f = 1;
-  } else if(this->frequency < 891.5f) {
-    // 868 MHz
-    f = 2;
-  } else {
-    // 915 MHz
-    f = 3;
-  }
-
-  // get raw power setting
-  uint8_t paTable[8][4] = {{0x12, 0x12, 0x03, 0x03},
-                           {0x0D, 0x0E, 0x0F, 0x0E},
-                           {0x1C, 0x1D, 0x1E, 0x1E},
-                           {0x34, 0x34, 0x27, 0x27},
-                           {0x51, 0x60, 0x50, 0x8E},
-                           {0x85, 0x84, 0x81, 0xCD},
-                           {0xCB, 0xC8, 0xCB, 0xC7},
-                           {0xC2, 0xC0, 0xC2, 0xC0}};
-
-  for(uint8_t i = 0; i < sizeof(allowedPwrs); i++) {
-    if(power == allowedPwrs[i]) {
-      *raw = paTable[i][f];
-      return(RADIOLIB_ERR_NONE);
-    }
-  }
-  
-  return(RADIOLIB_ERR_INVALID_OUTPUT_POWER);
-}
-
 int16_t CC1101::setSyncWord(uint8_t* sync, size_t len) {
-  return this->setSyncWord(sync, len, 0, false);
+  return this->setSyncWord(sync, len, 0, false, false);
 }
 
-int16_t CC1101::setSyncWord(const uint8_t* syncWord, uint8_t len, uint8_t maxErrBits, bool requireCarrierSense) {
+int16_t CC1101::setSyncWord(const uint8_t* syncWord, uint8_t len, uint8_t maxErrBits, bool requireCarrierSense, bool repeatSync) {
   if((maxErrBits > 1) || (len != 2)) {
     return(RADIOLIB_ERR_INVALID_SYNC_WORD);
   }
@@ -726,7 +665,7 @@ int16_t CC1101::setSyncWord(const uint8_t* syncWord, uint8_t len, uint8_t maxErr
   }
 
   // enable sync word filtering
-  int16_t state = enableSyncWordFiltering(maxErrBits, requireCarrierSense);
+  int16_t state = enableSyncWordFiltering(maxErrBits, requireCarrierSense, repeatSync);
   RADIOLIB_ASSERT(state);
 
   // set sync word register
@@ -736,15 +675,12 @@ int16_t CC1101::setSyncWord(const uint8_t* syncWord, uint8_t len, uint8_t maxErr
   return(state);
 }
 
-int16_t CC1101::setSyncWord(uint8_t syncH, uint8_t syncL, uint8_t maxErrBits, bool requireCarrierSense) {
+int16_t CC1101::setSyncWord(uint8_t syncH, uint8_t syncL, uint8_t maxErrBits, bool requireCarrierSense, bool repeatSync) {
   uint8_t syncWord[] = { syncH, syncL };
-  return(setSyncWord(syncWord, sizeof(syncWord), maxErrBits, requireCarrierSense));
+  return(setSyncWord(syncWord, sizeof(syncWord), maxErrBits, requireCarrierSense, repeatSync));
 }
 
-int16_t CC1101::setPreambleLength(size_t len) {
-  return this->setPreambleLength(len, len-4);
-}
-int16_t CC1101::setPreambleLength(uint8_t preambleLength, uint8_t qualityThreshold) {
+int16_t CC1101::setPreambleLength(size_t preambleLength, size_t qualityThreshold) {
   // check allowed values
   uint8_t value;
   switch(preambleLength) {
@@ -776,14 +712,21 @@ int16_t CC1101::setPreambleLength(uint8_t preambleLength, uint8_t qualityThresho
       return(RADIOLIB_ERR_INVALID_PREAMBLE_LENGTH);
   }
 
-  // set preabmble quality threshold and the actual length
-  uint8_t pqt = qualityThreshold/4;
+  // set preamble quality threshold and the actual length
+  uint8_t pqt = qualityThreshold == 0xFFFFFFFF ? (preambleLength-4)/4 : qualityThreshold / 4;
   if(pqt > 7) {
     pqt = 7;
   }
   int16_t state = SPIsetRegValue(RADIOLIB_CC1101_REG_PKTCTRL1, pqt << 5, 7, 5);
   state |= SPIsetRegValue(RADIOLIB_CC1101_REG_MDMCFG1, value, 6, 4);
+  RADIOLIB_ASSERT(state);
+  this->preambleLen = preambleLength;
   return(state);
+}
+
+int16_t CC1101::enableRxAfterTx(bool enable) {
+  // change the MCSM1 TXOFF_MODE to enable/disable auto switch to RX after TX
+  return SPIsetRegValue(RADIOLIB_CC1101_REG_MCSM1, (enable ? RADIOLIB_CC1101_TXOFF_RX : RADIOLIB_CC1101_TXOFF_IDLE), 1, 0);
 }
 
 int16_t CC1101::setNodeAddress(uint8_t nodeAddr, uint8_t numBroadcastAddrs) {
@@ -888,22 +831,28 @@ int16_t CC1101::variablePacketLengthMode(uint8_t maxLen) {
   return(setPacketMode(RADIOLIB_CC1101_LENGTH_CONFIG_VARIABLE, maxLen));
 }
 
-int16_t CC1101::enableSyncWordFiltering(uint8_t maxErrBits, bool requireCarrierSense) {
+int16_t CC1101::enableSyncWordFiltering(uint8_t maxErrBits, bool requireCarrierSense, bool repeatSync) {
   int16_t state = RADIOLIB_ERR_NONE;
 
-  switch(maxErrBits) {
-    case 0:
-      // in 16 bit sync word, expect all 16 bits
-      state |= SPIsetRegValue(RADIOLIB_CC1101_REG_MDMCFG2, (requireCarrierSense ? RADIOLIB_CC1101_SYNC_MODE_16_16_THR : RADIOLIB_CC1101_SYNC_MODE_16_16), 2, 0);
-      break;
-    case 1:
-      // in 16 bit sync word, expect at least 15 bits
-      state |= SPIsetRegValue(RADIOLIB_CC1101_REG_MDMCFG2, (requireCarrierSense ? RADIOLIB_CC1101_SYNC_MODE_15_16_THR : RADIOLIB_CC1101_SYNC_MODE_15_16), 2, 0);
-      break;
-    default:
-      state = RADIOLIB_ERR_INVALID_SYNC_WORD;
-      break;
+  if (repeatSync) {
+    // in repeated sync word mode, use the 30/32 mode which allows for 2 bit errors in the sync word
+    state |= SPIsetRegValue(RADIOLIB_CC1101_REG_MDMCFG2, (requireCarrierSense ? RADIOLIB_CC1101_SYNC_MODE_30_32_THR : RADIOLIB_CC1101_SYNC_MODE_30_32), 2, 0);
+  } else {
+    switch(maxErrBits) {
+      case 0:
+        // in 16 bit sync word, expect all 16 bits
+        state |= SPIsetRegValue(RADIOLIB_CC1101_REG_MDMCFG2, (requireCarrierSense ? RADIOLIB_CC1101_SYNC_MODE_16_16_THR : RADIOLIB_CC1101_SYNC_MODE_16_16), 2, 0);
+        break;
+      case 1:
+        // in 16 bit sync word, expect at least 15 bits
+        state |= SPIsetRegValue(RADIOLIB_CC1101_REG_MDMCFG2, (requireCarrierSense ? RADIOLIB_CC1101_SYNC_MODE_15_16_THR : RADIOLIB_CC1101_SYNC_MODE_15_16), 2, 0);
+        break;
+      default:
+        state = RADIOLIB_ERR_INVALID_SYNC_WORD;
+        break;
+    }
   }
+
   return(state);
 }
 
@@ -1059,7 +1008,8 @@ int16_t CC1101::beginCommon(const ConfigFSK_t& cfg) {
   // set module properties
   this->mod->spiConfig.cmds[RADIOLIB_MODULE_SPI_COMMAND_READ] = RADIOLIB_CC1101_CMD_READ;
   this->mod->spiConfig.cmds[RADIOLIB_MODULE_SPI_COMMAND_WRITE] = RADIOLIB_CC1101_CMD_WRITE;
-  this->mod->init();
+  int16_t state = this->mod->init();
+  RADIOLIB_ASSERT(state);
   this->mod->hal->pinMode(this->mod->getIrq(), this->mod->hal->GpioModeInput);
 
   // try to find the CC1101 chip
@@ -1067,10 +1017,10 @@ int16_t CC1101::beginCommon(const ConfigFSK_t& cfg) {
   bool flagFound = false;
   while((i < 10) && !flagFound) {
     int16_t version = getChipVersion();
-    if((version == RADIOLIB_CC1101_VERSION_CURRENT) || (version == RADIOLIB_CC1101_VERSION_LEGACY) || (version == RADIOLIB_CC1101_VERSION_CLONE)) {
+    if((version == RADIOLIB_CC1101_VERSION_CURRENT) || (version == RADIOLIB_CC1101_VERSION_LEGACY) || (version == RADIOLIB_CC1101_VERSION_CLONE) || (version == RADIOLIB_CC1101_VERSION_CLONE2)) {
       flagFound = true;
     } else {
-      RADIOLIB_DEBUG_BASIC_PRINTLN("CC1101 not found! (%d of 10 tries) RADIOLIB_CC1101_REG_VERSION == 0x%04X, expected 0x0004/0x0014", i + 1, version);
+      RADIOLIB_DEBUG_BASIC_PRINTLN("CC1101 not found! (%d of 10 tries) RADIOLIB_CC1101_REG_VERSION == 0x%02X, expected 0x04/0x14/0x17/0x03", i + 1, version);
       this->mod->hal->delay(10);
       i++;
     }
@@ -1078,14 +1028,15 @@ int16_t CC1101::beginCommon(const ConfigFSK_t& cfg) {
 
   if(!flagFound) {
     RADIOLIB_DEBUG_BASIC_PRINTLN("No CC1101 found!");
-    this->mod->term();
+    state = this->mod->term();
+    RADIOLIB_ASSERT(state);
     return(RADIOLIB_ERR_CHIP_NOT_FOUND);
   } else {
     RADIOLIB_DEBUG_BASIC_PRINTLN("M\tCC1101");
   }
 
   // configure settings not accessible by API
-  int16_t state = this->config();
+  state = this->config();
   RADIOLIB_ASSERT(state);
 
   // configure publicly accessible settings
@@ -1186,7 +1137,7 @@ int16_t CC1101::directMode(bool sync) {
   return(state);
 }
 
-void CC1101::getExpMant(float target, uint16_t mantOffset, uint8_t divExp, uint8_t expMax, uint8_t& exp, uint8_t& mant) {
+void CC1101::getExpMant(uint32_t target, uint16_t mantOffset, uint8_t divExp, uint8_t expMax, uint8_t& exp, uint8_t& mant) {
   // get table origin point (exp = 0, mant = 0)
   float origin = (mantOffset * RADIOLIB_CC1101_CRYSTAL_FREQ * 1000000.0f)/((uint32_t)1 << divExp);
 

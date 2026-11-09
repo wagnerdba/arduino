@@ -48,6 +48,8 @@
 #include "Hal.h"
 #if defined(RADIOLIB_BUILD_ARDUINO)
 #include "hal/Arduino/ArduinoHal.h"
+#elif defined(RADIOLIB_BUILD_GENERIC) && defined(ESP_PLATFORM)
+#include "hal/ESP-IDF/EspHal.h"
 #endif
 
 
@@ -123,6 +125,7 @@
 #include "protocols/LoRaWAN/LoRaWAN.h"
 #include "protocols/LoRaWAN/LoRaWANPacMan.h"
 #include "protocols/ADSB/ADSB.h"
+#include "protocols/SSDV/SSDV.h"
 
 // utilities
 #include "utils/CRC.h"

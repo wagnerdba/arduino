@@ -179,12 +179,6 @@
 #define RADIOLIB_ERR_INVALID_OUTPUT_POWER                      (-13)
 
 /*!
-  \brief LoRa preamble was detected during channel activity detection.
-  This means that there is some LoRa device currently transmitting in your channel.
-*/
-#define RADIOLIB_PREAMBLE_DETECTED                             (-14)
-
-/*!
   \brief No LoRa preambles were detected during channel activity detection. Your channel is free.
 */
 #define RADIOLIB_CHANNEL_FREE                                  (-15)
@@ -454,6 +448,11 @@
 */
 #define RADIOLIB_ERR_INVALID_RX_PERIOD                         (-709)
 
+/*!
+  \brief The supplied external NTC thermistor parameters are invalid.
+*/
+#define RADIOLIB_ERR_INVALID_NTC_PARAMETERS                    (-710)
+
 // AX.25-specific status codes
 
 /*!
@@ -613,6 +612,17 @@
 */
 #define RADIOLIB_ERR_INVALID_MULTICAST_GROUP                    (-1122)
 
+/*!
+  \brief The requested subband is invalid for this band (or there is no subband).
+*/
+#define RADIOLIB_ERR_INVALID_SUBBAND                            (-1123)
+
+/*!
+  \brief MAC answers (FOpts) currently prevent the requested uplink size. 
+  Transmit an empty frame first to clear the internal FOpts queue.
+*/
+#define RADIOLIB_ERR_MAC_ANSWERS_PENDING                        (-1124)
+
 // LR11x0-specific status codes
 
 /*!
@@ -624,6 +634,11 @@
   \brief GNSS subframe not available in the next 2.3 seconds.
 */
 #define RADIOLIB_ERR_GNSS_SUBFRAME_NOT_AVAILABLE                (-1201)
+
+/*!
+  \brief The device is running an unsupported firmware. Only firmware update is possible.
+*/
+#define RADIOLIB_ERR_UNSUPPORTED_FIRMWARE                       (-1202)
 
 /*!
   \brief Offset of GNSS demodulator errors.
@@ -663,6 +678,95 @@
 */
 #define RADIOLIB_ERR_ADSB_INVALID_CATEGORY                      (-1401)
 
+// SSDVClient-specific error codes
+/*!
+  \brief Callsign is empty or longer than 6 characters.
+*/
+#define RADIOLIB_ERR_SSDV_CALLSIGN_TOO_LONG                     (-1500)
+
+/*!
+  \brief Callsign contains characters outside the SSDV base-40 charset. 
+         Valid characters: A–Z, 0–9, '-', '/', '.'.
+*/
+#define RADIOLIB_ERR_SSDV_CALLSIGN_INVALID                      (-1501)
+
+/*!
+  \brief JPEG data pointer is NULL or length is zero.
+*/
+#define RADIOLIB_ERR_SSDV_NO_IMAGE                              (-1502)
+
+/*!
+  \brief quality parameter outside the valid range 0–7.
+*/
+#define RADIOLIB_ERR_SSDV_INVALID_QUALITY                       (-1503)
+
+/*!
+  \brief JPEG encoding failure. This usually means the JPEG is not 
+  in a format accepted by the encoder (progressive DCT, wrong colour space, 
+  dimensions not multiples of 16, etc.).
+*/
+#define RADIOLIB_ERR_SSDV_ENCODE_FAILED                         (-1504)
+
+/*!
+  \brief begin() has not been called, or returned an error.
+*/
+#define RADIOLIB_ERR_SSDV_NOT_INITIALIZED                       (-1505)
+
+/*!
+  \brief transmit() was called but no image has been loaded with setImage().
+*/
+#define RADIOLIB_ERR_SSDV_NO_PACKET_BUFFER                      (-1506)
+
+/*!
+  \brief transmit() was called after all packets for the current image were sent.
+*/
+#define RADIOLIB_ERR_SSDV_ALL_SENT                              (-1507)
+
+/*!
+  \brief The JPEG data appears to be truncated: the encoder requested more
+  input after all bytes had already been consumed (no JPEG EOI marker found).
+*/
+#define RADIOLIB_ERR_SSDV_JPEG_TRUNCATED                        (-1508)
+
+/*!
+  \brief The two encoding passes yielded a different packet count.
+*/
+#define RADIOLIB_ERR_SSDV_INTERNAL_MISMATCH                     (-1509)
+
+/*!
+  \brief The received SSDV packet was too short, 
+  failed CRC and/or RS-FEC validation.
+*/
+#define RADIOLIB_ERR_SSDV_INVALID_PACKET                        (-1510)
+
+/*!
+  \brief The internal ssdv decoder ran into an error while processing a packet.
+*/
+#define RADIOLIB_ERR_SSDV_DECODE_FAILED                         (-1511)
+
+/*!
+  \brief The statically sized buffer is too small for the requested image.
+*/
+#define RADIOLIB_ERR_SSDV_BUFFER_TOO_SMALL                      (-1512)
+
+/*!
+  \brief The image was not fully received yet.
+*/
+#define RADIOLIB_ERR_SSDV_NO_JPEG                               (-1513)
+
+/*!
+  \brief The static packet buffer is in use by another SSDVClient instance.
+  Only one instance can hold an image when RADIOLIB_STATIC_ONLY is enabled.
+*/
+#define RADIOLIB_ERR_SSDV_BUFFER_IN_USE                         (-1514)
+
+/*!
+  \brief Offset for custom HAL error codes.
+*/
+#define RADIOLIB_ERR_HAL_OFFSET                                 (-10000)
+#define RADIOLIB_ERR_HAL(X)                                     (RADIOLIB_ERR_HAL_OFFSET + (X))
+#define RADIOLIB_GET_HAL_ERROR(X)                               ((X) - RADIOLIB_ERR_HAL_OFFSET)
+
 /*!
   \}
 */
@@ -687,5 +791,26 @@ typedef uint32_t RadioLibIrqFlags_t;
 /*!
   \}
 */
+
+// unit prefix macros
+#define RADIOLIB_UNIT_KILO(X)             ((uint32_t)(X) * (uint32_t)1000)
+#define RADIOLIB_UNIT_KILO_FLT(X)         ((uint32_t)((float)(X) * 1000.0f))
+#define RADIOLIB_UNIT_MEGA(X)             ((uint32_t)(X) * (uint32_t)1000000)
+#define RADIOLIB_UNIT_MEGA_FLT(X)         ((uint32_t)((float)(X) * 1000000.0f))
+
+/*!
+  \brief Type used for TCXO reference voltage levels.
+*/
+enum RadioLibTCXOVoltage_t {
+  VoltageNone = -1,
+  Voltage1V6,
+  Voltage1V7,
+  Voltage1V8,
+  Voltage2V2,
+  Voltage2V4,
+  Voltage2V7,
+  Voltage3V0,
+  Voltage3V3,
+};
 
 #endif

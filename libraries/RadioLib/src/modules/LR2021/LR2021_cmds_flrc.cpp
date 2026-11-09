@@ -9,7 +9,11 @@
 
 int16_t LR2021::setFlrcModulationParams(uint8_t brBw, uint8_t cr, uint8_t pulseShape) {
   uint8_t buff[] = { brBw, (uint8_t)((cr << 4) | (pulseShape & 0x0F)) };
-  return(this->SPIcommand(RADIOLIB_LR2021_CMD_SET_FLRC_MODULATION_PARAMS, true, buff, sizeof(buff)));
+  int16_t state = this->SPIcommand(RADIOLIB_LR2021_CMD_SET_FLRC_MODULATION_PARAMS, true, buff, sizeof(buff));
+  if (state == RADIOLIB_ERR_NONE) {
+    state = this->setDCDCworkaround();
+  }
+  return(state);
 }
 
 int16_t LR2021::setFlrcPacketParams(uint8_t agcPreambleLen, uint8_t syncWordLen, uint8_t syncWordTx, uint8_t syncMatch, bool fixedLength, uint8_t crc, uint16_t payloadLen) {
@@ -30,10 +34,10 @@ int16_t LR2021::getFlrcRxStats(uint16_t* packetRx, uint16_t* packetCrcError, uin
   return(state);
 }
 
-int16_t LR2021::getFlrcPacketStatus(uint16_t* packetLen, float* rssiAvg, float* rssiSync, uint8_t* syncWordNum) {
-  uint8_t buff[5] = { 0 };
+int16_t LR2021::getFlrcPacketStatus(uint16_t* packetLen, float* rssiAvg, float* rssiSync, uint8_t* syncWordNum, int32_t* freqError) {
+  uint8_t buff[8] = { 0 };
   int16_t state = this->SPIcommand(RADIOLIB_LR2021_CMD_GET_FLRC_PACKET_STATUS, false, buff, sizeof(buff));
-  uint16_t raw;
+  uint32_t raw;
   if(packetLen) { *packetLen = ((uint16_t)(buff[0]) << 8) | (uint16_t)buff[1]; }
   if(rssiAvg) {
     raw = (uint16_t)buff[2] << 1;
@@ -46,6 +50,12 @@ int16_t LR2021::getFlrcPacketStatus(uint16_t* packetLen, float* rssiAvg, float* 
     *rssiSync = (float)raw / -2.0f;
   }
   if(syncWordNum) { *syncWordNum = (buff[4] & 0xF0) >> 4; }
+  if(freqError) {
+    raw = (uint32_t)buff[5] << 16;
+    raw |= (uint32_t)buff[6] << 8;
+    raw |= buff[7];
+    *freqError = (int32_t)((raw ^ 0x800000UL) - 0x800000UL);
+  }
   return(state);
 }
 

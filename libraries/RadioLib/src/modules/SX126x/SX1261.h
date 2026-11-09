@@ -29,18 +29,12 @@ class SX1261 : public SX1262 {
 
     /*!
       \brief Sets output power. Allowed values are in range from -17 to 15 dBm.
+      When using an external PA, the output power offset may be handled by the library using PhysicalLayer::setOutputPowerOffset.
+      See https://github.com/jgromes/RadioLib/wiki/High-power-Radio-Modules-Guide for details on its usage.
       \param power Output power to be set in dBm.
       \returns \ref status_codes
     */
     int16_t setOutputPower(int8_t power) override;
-
-    /*!
-      \brief Check if output power is configurable.
-      \param power Output power in dBm.
-      \param clipped Clipped output power value to what is possible within the module's range.
-      \returns \ref status_codes
-    */
-    int16_t checkOutputPower(int8_t power, int8_t* clipped) override;
 
 #if !RADIOLIB_GODMODE
   private:

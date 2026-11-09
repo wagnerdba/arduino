@@ -12,6 +12,8 @@
 #define RADIOLIB_CC1101_FIFO_SIZE                               64
 #define RADIOLIB_CC1101_CRYSTAL_FREQ                            26.0f
 #define RADIOLIB_CC1101_DIV_EXPONENT                            16
+#define RADIOLIB_CC1101_POUT_MIN                                -30
+#define RADIOLIB_CC1101_POUT_MAX                                10
 
 // CC1101 SPI commands
 #define RADIOLIB_CC1101_CMD_READ                                0b10000000
@@ -472,6 +474,7 @@
 #define RADIOLIB_CC1101_VERSION_CURRENT                         0x14
 #define RADIOLIB_CC1101_VERSION_LEGACY                          0x04
 #define RADIOLIB_CC1101_VERSION_CLONE                           0x17
+#define RADIOLIB_CC1101_VERSION_CLONE2                          0x03
 
 // RADIOLIB_CC1101_REG_MARCSTATE
 #define RADIOLIB_CC1101_MARC_STATE_SLEEP                        0x00        //  4     0   main radio control state: sleep
@@ -513,10 +516,10 @@
 #define RADIOLIB_CC1101_GDO0_ACTIVE                             0b00000001  //  0     0   GDO0 is active/asserted
 
 // RadioLib defaults
-#define RADIOLIB_CC1101_DEFAULT_FREQ                            434.0
-#define RADIOLIB_CC1101_DEFAULT_BR                              4.8
-#define RADIOLIB_CC1101_DEFAULT_FREQDEV                         5.0
-#define RADIOLIB_CC1101_DEFAULT_RXBW                            58.0
+#define RADIOLIB_CC1101_DEFAULT_FREQ                            RADIOLIB_UNIT_MEGA(434)
+#define RADIOLIB_CC1101_DEFAULT_BR                              4800
+#define RADIOLIB_CC1101_DEFAULT_FREQDEV                         5000
+#define RADIOLIB_CC1101_DEFAULT_RXBW                            RADIOLIB_UNIT_KILO(125)
 #define RADIOLIB_CC1101_DEFAULT_POWER                           10
 #define RADIOLIB_CC1101_DEFAULT_PREAMBLELEN                     16
 #define RADIOLIB_CC1101_DEFAULT_SW                              {0x12, 0xAD}
@@ -551,25 +554,6 @@ class CC1101: public PhysicalLayer {
       \returns \ref status_codes
     */
     int16_t begin(const ConfigFSK_t& config);
-
-    /*!
-      \deprecated Use \ref begin(const ConfigFSK_t& config) instead.
-      \brief Initialization method.
-      \param freq Carrier frequency in MHz. Defaults to 434 MHz.
-      \param br Bit rate to be used in kbps. Defaults to 4.8 kbps.
-      \param freqDev Frequency deviation from carrier frequency in kHz Defaults to 5.0 kHz.
-      \param rxBw Receiver bandwidth in kHz. Defaults to 58.0 kHz.
-      \param pwr Output power in dBm. Defaults to 10 dBm.
-      \param preambleLength Preamble Length in bits. Defaults to 16 bits.
-      \returns \ref status_codes
-    */
-    int16_t begin(
-      float freq = RADIOLIB_CC1101_DEFAULT_FREQ,
-      float br = RADIOLIB_CC1101_DEFAULT_BR,
-      float freqDev = RADIOLIB_CC1101_DEFAULT_FREQDEV,
-      float rxBw = RADIOLIB_CC1101_DEFAULT_RXBW,
-      int8_t pwr = RADIOLIB_CC1101_DEFAULT_POWER,
-      uint8_t preambleLength = RADIOLIB_CC1101_DEFAULT_PREAMBLELEN);
         
     /*!
       \brief Initialization method for 4-FSK modem.
@@ -579,25 +563,6 @@ class CC1101: public PhysicalLayer {
       \returns \ref status_codes
     */
     int16_t beginFSK4(const ConfigFSK_t& config);
-    
-    /*!
-      \deprecated Use \ref beginFSK4(const ConfigFSK_t& config) instead.
-      \brief Initialization method for 4-FSK modulation.
-      \param freq Carrier frequency in MHz. Defaults to 434 MHz.
-      \param br Bit rate to be used in kbps. Defaults to 4.8 kbps.
-      \param freqDev Frequency deviation from carrier frequency in kHz Defaults to 5.0 kHz.
-      \param rxBw Receiver bandwidth in kHz. Defaults to 58.0 kHz.
-      \param pwr Output power in dBm. Defaults to 10 dBm.
-      \param preambleLength Preamble Length in bits. Defaults to 16 bits.
-      \returns \ref status_codes
-    */
-    int16_t beginFSK4(
-      float freq = RADIOLIB_CC1101_DEFAULT_FREQ,
-      float br = RADIOLIB_CC1101_DEFAULT_BR,
-      float freqDev = RADIOLIB_CC1101_DEFAULT_FREQDEV,
-      float rxBw = RADIOLIB_CC1101_DEFAULT_RXBW,
-      int8_t pwr = RADIOLIB_CC1101_DEFAULT_POWER,
-      uint8_t preambleLength = RADIOLIB_CC1101_DEFAULT_PREAMBLELEN);
 
     /*!
       \brief Reset method - resets the chip using manual reset sequence (without RESET pin).
@@ -703,28 +668,6 @@ class CC1101: public PhysicalLayer {
     void clearGdo2Action();
 
     /*!
-      \brief Sets interrupt service routine to call when a packet is received.
-      \param func ISR to call.
-    */
-    void setPacketReceivedAction(void (*func)(void)) override;
-
-    /*!
-      \brief Clears interrupt service routine to call when a packet is received.
-    */
-    void clearPacketReceivedAction() override;
-
-    /*!
-      \brief Sets interrupt service routine to call when a packet is sent.
-      \param func ISR to call.
-    */
-    void setPacketSentAction(void (*func)(void)) override;
-
-    /*!
-      \brief Clears interrupt service routine to call when a packet is sent.
-    */
-    void clearPacketSentAction() override;
-
-    /*!
       \brief Interrupt-driven binary transmit method for packets less than 64 bytes.
       Method blocks for packets longer than 64 bytes up to a 255 byte limit, until 
       the last bytes are placed in the FIFO. Some limitations and issues apply; see discussion: 
@@ -778,19 +721,19 @@ class CC1101: public PhysicalLayer {
     // configuration methods
 
     /*!
-      \brief Sets carrier frequency. Allowed values are in bands 300.0 to 348.0 MHz,
-      387.0 to 464.0 MHz and 779.0 to 928.0 MHz.
-      \param freq Carrier frequency to be set in MHz.
+      \brief Sets carrier frequency. Allowed values are in bands 300 to 348 MHz,
+      387 to 464 MHz and 779 to 928 MHz.
+      \param freq Carrier frequency to be set in Hz.
       \returns \ref status_codes
     */
-    int16_t setFrequency(float freq) override;
+    int16_t setFrequency(uint32_t freq) override;
 
     /*!
-      \brief Sets bit rate. Allowed values range from 0.025 to 600.0 kbps.
+      \brief Sets bit rate. Allowed values range from 25 bps to 600 kbps.
       \param br Bit rate to be set in kbps.
       \returns \ref status_codes
     */
-    int16_t setBitRate(float br) override;
+    int16_t setBitRate(uint32_t br) override;
 
     /*!
       \brief Sets bit rate tolerance in BSCFG register. Allowed values are 0:(0%), 1(3,125%), 2:(6,25%) and 3:(12,5%).
@@ -802,10 +745,11 @@ class CC1101: public PhysicalLayer {
     /*!
       \brief Sets receiver bandwidth. Allowed values are 58, 68, 81, 102, 116, 135, 162,
       203, 232, 270, 325, 406, 464, 541, 650 and 812 kHz.
-      \param rxBw Receiver bandwidth to be set in kHz.
+      \param rxBw GFSK receiver bandwidth to be set in Hz. In case the provided value is not an exact match
+      with the supported values, the closest match will be selected.
       \returns \ref status_codes
     */
-    int16_t setRxBandwidth(float rxBw);
+    int16_t setRxBandwidth(uint32_t rxBw);
 
      /*!
       \brief calculates and sets Rx bandwidth based on the freq, baud and freq uncertainty.
@@ -817,17 +761,17 @@ class CC1101: public PhysicalLayer {
 
     /*!
       \brief Sets frequency deviation. Allowed values range from 1.587 to 380.8 kHz.
-      \param freqDev Frequency deviation to be set in kHz.
+      \param freqDev Frequency deviation to be set in Hz.
       \returns \ref status_codes
     */
-    int16_t setFrequencyDeviation(float freqDev) override;
+    int16_t setFrequencyDeviation(uint32_t freqDev) override;
 
     /*!
       \brief Gets frequency deviation. 
       \param[out] freqDev Pointer to variable where to save the frequency deviation.
       \returns \ref status_codes
     */
-    int16_t getFrequencyDeviation(float *freqDev);
+    int16_t getFrequencyDeviation(uint32_t *freqDev);
 
     /*!
       \brief Sets output power. Allowed values are -30, -20, -15, -10, 0, 5, 7 or 10 dBm.
@@ -835,24 +779,6 @@ class CC1101: public PhysicalLayer {
       \returns \ref status_codes
     */
     int16_t setOutputPower(int8_t pwr) override;
-
-    /*!
-      \brief Check if output power is configurable.
-      This method is needed for compatibility with PhysicalLayer::checkOutputPower.
-      \param power Output power in dBm.
-      \param clipped Clipped output power value to what is possible within the module's range.
-      \returns \ref status_codes
-    */
-    int16_t checkOutputPower(int8_t power, int8_t* clipped) override;
-
-    /*!
-      \brief Check if output power is configurable.
-      \param power Output power in dBm.
-      \param clipped Clipped output power value to what is possible within the module's range.
-      \param raw Raw internal value.
-      \returns \ref status_codes
-    */
-    int16_t checkOutputPower(int8_t power, int8_t* clipped, uint8_t* raw);
 
     /*!
       \brief Set 1 or 2 bytes of sync word.
@@ -868,9 +794,10 @@ class CC1101: public PhysicalLayer {
       \param syncL LSB of the sync word.
       \param maxErrBits Maximum allowed number of bit errors in received sync word. Defaults to 0.
       \param requireCarrierSense Require carrier sense above threshold in addition to sync word.
+      \param repeatSync Repeat 16-bit sync word twice (enables the 32-bit sync word mode of CC1101).
       \returns \ref status_codes
     */
-    int16_t setSyncWord(uint8_t syncH, uint8_t syncL, uint8_t maxErrBits = 0, bool requireCarrierSense = false);
+    int16_t setSyncWord(uint8_t syncH, uint8_t syncL, uint8_t maxErrBits = 0, bool requireCarrierSense = false, bool repeatSync = false);
 
     /*!
       \brief Sets 1 or 2 bytes of sync word.
@@ -878,24 +805,25 @@ class CC1101: public PhysicalLayer {
       \param len Sync word length in bytes.
       \param maxErrBits Maximum allowed number of bit errors in received sync word. Defaults to 0.
       \param requireCarrierSense Require carrier sense above threshold in addition to sync word.
+      \param repeatSync Repeat 16-bit sync word twice (enables the 32-bit sync word mode of CC1101).
       \returns \ref status_codes
     */
-    int16_t setSyncWord(const uint8_t* syncWord, uint8_t len, uint8_t maxErrBits = 0, bool requireCarrierSense = false);
-
-    /*!
-      \brief Sets preamble length.
-      \param len Preamble length to be set (in bits), allowed values: 16, 24, 32, 48, 64, 96, 128 and 192.
-      \returns \ref status_codes
-    */
-    int16_t setPreambleLength(size_t len) override;
+    int16_t setSyncWord(const uint8_t* syncWord, uint8_t len, uint8_t maxErrBits = 0, bool requireCarrierSense = false, bool repeatSync = false);
 
     /*!
       \brief Sets preamble length.
       \param preambleLength Preamble length to be set (in bits), allowed values: 16, 24, 32, 48, 64, 96, 128 and 192.
-      \param qualityThreshold Preamble quality threshold (PQT) to set.
+      \param qualityThreshold Preamble quality threshold (PQT) to set. Defaults to preambleLength - 1.
       \returns \ref status_codes
     */
-    int16_t setPreambleLength(uint8_t preambleLength, uint8_t qualityThreshold);
+    int16_t setPreambleLength(size_t preambleLength, size_t qualityThreshold = 0xFFFFFFFF) override;
+
+    /*!
+      \brief Enables/disables automatic switch to reception after transmission. Uses the TXOFF_RX mode of CC1101
+      \param enable True to enable automatic switch
+      \returns \ref status_codes
+    */
+    int16_t enableRxAfterTx(bool enable = true);
 
     /*!
       \brief Sets node and broadcast addresses. Calling this method will also enable address filtering.
@@ -957,9 +885,10 @@ class CC1101: public PhysicalLayer {
       \brief Enable sync word filtering and generation.
       \param maxErrBits Maximum number of allowed error bits in sync word.
       \param requireCarrierSense Require carrier sense above threshold in addition to sync word.
+      \param repeatSync Repeat 16-bit sync word twice (enables the 32-bit sync word mode of CC1101).
       \returns \ref status_codes
     */
-    int16_t enableSyncWordFiltering(uint8_t maxErrBits = 0, bool requireCarrierSense = false);
+    int16_t enableSyncWordFiltering(uint8_t maxErrBits = 0, bool requireCarrierSense = false, bool repeatSync = false);
 
     /*!
       \brief Disable preamble and sync word filtering and generation.
@@ -970,6 +899,7 @@ class CC1101: public PhysicalLayer {
 
     /*!
       \brief Enable CRC filtering and generation.
+      The CRC used by CC1101 is 16 bits long, uses polynomial 0x8005, initial value 0xFFFF and disabled inversion.
       \param enable Set or unset CRC generation and filtering.
       \returns \ref status_codes
     */
@@ -1067,8 +997,8 @@ class CC1101: public PhysicalLayer {
   #endif
     Module* mod;
 
-    float frequency = RADIOLIB_CC1101_DEFAULT_FREQ;
-    float bitRate = RADIOLIB_CC1101_DEFAULT_BR;
+    uint32_t frequency = RADIOLIB_CC1101_DEFAULT_FREQ;
+    uint32_t bitRate = RADIOLIB_CC1101_DEFAULT_BR;
     uint8_t rawRSSI = 0;
     uint8_t rawLQI = 0;
     uint8_t modulation = RADIOLIB_CC1101_MOD_FORMAT_2_FSK;
@@ -1080,6 +1010,7 @@ class CC1101: public PhysicalLayer {
     bool promiscuous = false;
     bool crcOn = true;
     bool directModeEnabled = false;
+    uint8_t preambleLen = RADIOLIB_CC1101_DEFAULT_PREAMBLELEN;
 
     int8_t power = RADIOLIB_CC1101_DEFAULT_POWER;
 
@@ -1088,7 +1019,7 @@ class CC1101: public PhysicalLayer {
     int16_t transmitDirect(bool sync, uint32_t frf);
     int16_t receiveDirect(bool sync);
     int16_t directMode(bool sync);
-    static void getExpMant(float target, uint16_t mantOffset, uint8_t divExp, uint8_t expMax, uint8_t& exp, uint8_t& mant);
+    static void getExpMant(uint32_t target, uint16_t mantOffset, uint8_t divExp, uint8_t expMax, uint8_t& exp, uint8_t& mant);
     int16_t setPacketMode(uint8_t mode, uint16_t len);
 };
 

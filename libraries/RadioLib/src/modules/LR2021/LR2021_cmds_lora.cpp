@@ -10,8 +10,11 @@
 int16_t LR2021::setLoRaModulationParams(uint8_t sf, uint8_t bw, uint8_t cr, uint8_t ldro) {
   // calculate symbol length and enable low data rate optimization, if auto-configuration is enabled
   if(this->ldroAuto) {
-    float symbolLength = (float)(uint32_t(1) << this->spreadingFactor) / (float)this->bandwidthKhz;
-    if(symbolLength >= 16.0f) {
+    uint64_t symbolLengthUs = ((uint64_t)1000000 * ((uint64_t)1 << this->spreadingFactor)) / (uint64_t)this->bandwidthHz;
+    // LDRO on SX128x seems to be working differently to sub-GHz LoRa, as it is always needed for SF > 10
+    // if SX128x bandwidth is being used at 2.4 GHz, we use this approach instead of the symbol time to preserve compatibility
+    bool sx128xLdro = this->highFreq && ((bw >= RADIOLIB_LR2021_LORA_BW_203) || (bw <= RADIOLIB_LR2021_LORA_BW_812)) && (sf > 10);
+    if((symbolLengthUs >= 16000) || sx128xLdro) {
       this->ldrOptimize = RADIOLIB_LR2021_LORA_LDRO_ENABLED;
     } else {
       this->ldrOptimize = RADIOLIB_LR2021_LORA_LDRO_DISABLED;
@@ -21,19 +24,37 @@ int16_t LR2021::setLoRaModulationParams(uint8_t sf, uint8_t bw, uint8_t cr, uint
   }
 
   uint8_t buff[] = { (uint8_t)(((sf & 0x0F) << 4) | (bw & 0x0F)), (uint8_t)(((cr & 0x0F) << 4) | this->ldrOptimize) };
-  return(this->SPIcommand(RADIOLIB_LR2021_CMD_SET_LORA_MODULATION_PARAMS, true, buff, sizeof(buff)));
+  int16_t state = this->SPIcommand(RADIOLIB_LR2021_CMD_SET_LORA_MODULATION_PARAMS, true, buff, sizeof(buff));
+  if (state == RADIOLIB_ERR_NONE) {
+    state = this->setDCDCworkaround();
+  }
+  return(state);
 }
 
 int16_t LR2021::setLoRaPacketParams(uint16_t preambleLen, uint8_t hdrType, uint8_t payloadLen, uint8_t crcType, uint8_t invertIQ) {
   uint8_t buff[] = { 
     (uint8_t)((preambleLen >> 8) & 0xFF), (uint8_t)(preambleLen & 0xFF), payloadLen,
-    (uint8_t)((hdrType & 0x04) | (crcType & 0x02) | (invertIQ & 0x01)),
+    (uint8_t)(((hdrType & 0x01) << 2) | ((crcType & 0x01) << 1) | (invertIQ & 0x01)),
   };
   return(this->SPIcommand(RADIOLIB_LR2021_CMD_SET_LORA_PACKET_PARAMS, true, buff, sizeof(buff)));
 }
 
-int16_t LR2021::setLoRaSynchTimeout(uint8_t numSymbols, bool format) {
-  uint8_t buff[] = { numSymbols, (uint8_t)format };
+int16_t LR2021::setLoRaSynchTimeout(uint16_t numSymbols) {
+  bool mantissa = false;
+  uint8_t val = 0;
+  if(numSymbols <= 0xFF) {
+    val = numSymbols;
+  } else {
+    uint16_t mant = numSymbols >> 1;
+    uint8_t exp = 0;
+    while(mant > 31) {
+      mant = (mant + 3) >> 2;
+      exp++;
+    }
+    mantissa = true;
+    val = (mant << 3) + exp;
+  }
+  uint8_t buff[2] = { val, (uint8_t)mantissa };
   return(this->SPIcommand(RADIOLIB_LR2021_CMD_SET_LORA_SYNCH_TIMEOUT, true, buff, sizeof(buff)));
 }
 
@@ -68,27 +89,40 @@ int16_t LR2021::getLoRaRxStats(uint16_t* pktRxTotal, uint16_t* pktCrcError, uint
   if(pktRxTotal) { *pktRxTotal = ((uint16_t)(buff[0]) << 8) | (uint16_t)buff[1]; }
   if(pktCrcError) { *pktCrcError = ((uint16_t)(buff[2]) << 8) | (uint16_t)buff[3]; }
   if(headerCrcError) { *headerCrcError = ((uint16_t)(buff[4]) << 8) | (uint16_t)buff[5]; }
-  if(falseSynch) { *falseSynch = ((uint16_t)(buff[7]) << 8) | (uint16_t)buff[6]; }
+  if(falseSynch) { *falseSynch = ((uint16_t)(buff[6]) << 8) | (uint16_t)buff[7]; }
   return(state);
 }
 
-int16_t LR2021::getLoRaPacketStatus(uint8_t* cr, bool* crc, uint8_t* packetLen, float* snrPacket, float* rssiPacket, float* rssiSignalPacket) {
-  uint8_t buff[6] = { 0 };
+int16_t LR2021::getLoRaPacketStatus(uint8_t* cr, bool* crc, uint8_t* packetLen, float* snrPacket, float* rssiPacket, float* rssiSignalPacket, uint8_t* detector, int32_t* freqError) {
+  uint8_t buff[9] = { 0 };
   int16_t state = this->SPIcommand(RADIOLIB_LR2021_CMD_GET_LORA_PACKET_STATUS, false, buff, sizeof(buff));
-  uint16_t raw;
+  uint32_t raw;
   if(crc) { *crc = (buff[0] & 0x10) >> 4; }
   if(cr) { *cr = buff[0] & 0x0F; }
   if(packetLen) { *packetLen = buff[1]; }
-  if(snrPacket) { *snrPacket = (float)((int8_t)buff[2]) / 4.0f; }
+  if(snrPacket) { *snrPacket = (float)((int8_t)buff[2]) * 0.25f; }
   if(rssiPacket) {
     raw = (uint16_t)buff[3] << 1;
     raw |= (buff[5] & 0x02) >> 1;
-    *rssiPacket = (float)raw / -2.0f;
+    *rssiPacket = (float)raw * -0.5f;
   }
   if(rssiSignalPacket) {
     raw = (uint16_t)buff[4] << 1;
     raw |= buff[5] & 0x01;
-    *rssiSignalPacket = (float)raw / -2.0f;
+    *rssiSignalPacket = (float)raw * -0.5f;
+  }
+  if(detector) {
+    uint8_t det = (buff[5] >> 2) & 0x0F;
+    if(det == 0x01) { *detector = 0; }
+    else if(det == 0x02) { *detector = 1; }
+    else if(det == 0x04) { *detector = 2; }
+    else if(det == 0x08) { *detector = 3; }
+  }
+  if(freqError) {
+    raw = (uint32_t)buff[6] << 16;
+    raw |= (uint32_t)buff[7] << 8;
+    raw |= buff[8];
+    *freqError = (int32_t)((raw ^ 0x800000UL) - 0x800000UL);
   }
   return(state);
 }

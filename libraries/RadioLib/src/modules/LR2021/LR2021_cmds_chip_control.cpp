@@ -62,7 +62,7 @@ int16_t LR2021::readRegMem32(uint32_t addr, uint32_t* data, size_t len) {
   // convert endians
   if(data && (state == RADIOLIB_ERR_NONE)) {
     for(size_t i = 0; i < len; i++) {
-      data[i] = ((uint32_t)rplBuff[2 + i*sizeof(uint32_t)] << 24) | ((uint32_t)rplBuff[3 + i*sizeof(uint32_t)] << 16) | ((uint32_t)rplBuff[4 + i*sizeof(uint32_t)] << 8) | (uint32_t)rplBuff[5 + i*sizeof(uint32_t)];
+      data[i] = ((uint32_t)rplBuff[i*sizeof(uint32_t)] << 24) | ((uint32_t)rplBuff[1 + i*sizeof(uint32_t)] << 16) | ((uint32_t)rplBuff[2 + i*sizeof(uint32_t)] << 8) | (uint32_t)rplBuff[3 + i*sizeof(uint32_t)];
     }
   }
 
@@ -140,12 +140,8 @@ int16_t LR2021::setDefaultRxTxTimeout(uint32_t rxTimeout, uint32_t txTimeout) {
   return(this->SPIcommand(RADIOLIB_LR2021_CMD_SET_DEFAULT_RX_TX_TIMEOUT, true, buff, sizeof(buff)));
 }
 
-int16_t LR2021::setRegMode(uint8_t simoUsage, const uint8_t rampTimes[4]) {
-  uint8_t buff[] = { simoUsage, 
-    rampTimes[RADIOLIB_LR2021_REG_MODE_RAMP_INDEX_RC2RU], rampTimes[RADIOLIB_LR2021_REG_MODE_RAMP_INDEX_TX2RU], 
-    rampTimes[RADIOLIB_LR2021_REG_MODE_RAMP_INDEX_RU2RC], rampTimes[RADIOLIB_LR2021_REG_MODE_RAMP_INDEX_RAMP_DOWN],
-  };
-  return(this->SPIcommand(RADIOLIB_LR2021_CMD_SET_REG_MODE, true, buff, sizeof(buff)));
+int16_t LR2021::setRegMode(uint8_t mode) {
+  return(this->SPIcommand(RADIOLIB_LR2021_CMD_SET_REG_MODE, true, &mode, sizeof(mode)));
 }
 
 int16_t LR2021::calibrate(uint8_t blocks) {
@@ -162,7 +158,7 @@ int16_t LR2021::calibrateFrontEnd(const uint16_t freq[3]) {
 }
 
 int16_t LR2021::getVbat(uint8_t resolution, uint16_t* vbat) {
-  uint8_t reqBuff[] = { (uint8_t)(RADIOLIB_LR2021_VBAT_FORMAT_MV | ((RADIOLIB_LR2021_MEAS_RESOLUTION_OFFSET + resolution) & 0x07)) };
+  uint8_t reqBuff[] = { (uint8_t)(RADIOLIB_LR2021_VBAT_FORMAT_MV | ((resolution - RADIOLIB_LR2021_MEAS_RESOLUTION_OFFSET) & 0x07)) };
   uint8_t rplBuff[2] = { 0 };
   int16_t state = this->SPIcommand(RADIOLIB_LR2021_CMD_GET_V_BAT, false, rplBuff, sizeof(rplBuff), reqBuff, sizeof(reqBuff));
   if(vbat) { *vbat = ((uint16_t)(rplBuff[0]) << 8) | (uint16_t)rplBuff[1]; }
@@ -170,12 +166,14 @@ int16_t LR2021::getVbat(uint8_t resolution, uint16_t* vbat) {
 }
 
 int16_t LR2021::getTemp(uint8_t source, uint8_t resolution, float* temp) {
-  uint8_t reqBuff[] = { (uint8_t)((source & 0x30) | RADIOLIB_LR2021_TEMP_FORMAT_DEG_C | ((RADIOLIB_LR2021_MEAS_RESOLUTION_OFFSET + resolution) & 0x07)) };
+  // reading of temperature in degrees seems broken and the datasheet disagrees with reference implementation
+  // so we read out the raw value and convert it here
+  uint8_t reqBuff[] = { (uint8_t)((source & 0x30) | RADIOLIB_LR2021_TEMP_FORMAT_RAW | ((resolution - RADIOLIB_LR2021_MEAS_RESOLUTION_OFFSET) & 0x07)) };
   uint8_t rplBuff[2] = { 0 };
   int16_t state = this->SPIcommand(RADIOLIB_LR2021_CMD_GET_TEMP, false, rplBuff, sizeof(rplBuff), reqBuff, sizeof(reqBuff));
   if(temp) { 
     uint16_t raw = ((uint16_t)(rplBuff[0]) << 8) | (uint16_t)rplBuff[1];
-    *temp = (float)raw/320.0f;
+    *temp = (25.0f + (0.7295f * (1000.0f / 1.7f))) - raw * ((1.35f / 8192.0f) * (1000.0f / 1.7f));
   }
   return(state);
 }
@@ -240,8 +238,19 @@ int16_t LR2021::getAndClearIrqStatus(uint32_t* irq) {
   return(state);
 }
 
-int16_t LR2021::configFifoIrq(uint8_t rxFifoIrq, uint8_t txFifoIrq, uint8_t rxHighThreshold, uint8_t txHighThreshold) {
-  uint8_t buff[] = { rxFifoIrq, txFifoIrq, rxHighThreshold, txHighThreshold };
+int16_t LR2021::configFifoIrq(uint8_t rxFifoIrq, uint8_t txFifoIrq, uint16_t rxHighThreshold, uint16_t txLowThreshold, uint16_t rxLowThreshold, uint16_t txHighThreshold) {
+  uint8_t buff[] = {
+	rxFifoIrq,
+	txFifoIrq,
+	(uint8_t)((rxHighThreshold >> 8) & 0xFF),
+	(uint8_t)(rxHighThreshold & 0xFF),
+	(uint8_t)((txLowThreshold >> 8) & 0xFF),
+	(uint8_t)(txLowThreshold & 0xFF),
+	(uint8_t)((rxLowThreshold >> 8) & 0xFF),
+	(uint8_t)(rxLowThreshold & 0xFF),
+	(uint8_t)((txHighThreshold >> 8) & 0xFF),
+	(uint8_t)(txHighThreshold & 0xFF),
+	};
   return(this->SPIcommand(RADIOLIB_LR2021_CMD_CONFIG_FIFO_IRQ, true, buff, sizeof(buff)));
 }
 
@@ -326,6 +335,113 @@ int16_t LR2021::getPramVersion(uint16_t* version) {
   int16_t state = this->readRegMem32(RADIOLIB_LR2021_PRAM_ADDR_VERSION, &val, 1);
   if(version) { *version = ((val >>8) & 0xFFFF);  }
   return(state);
+}
+
+int16_t LR2021::setRegulatorLDO() {
+  return(this->setRegMode(RADIOLIB_LR2021_REG_MODE_SIMO_OFF));
+}
+
+int16_t LR2021::setRegulatorDCDC() {
+  return(this->setRegMode(RADIOLIB_LR2021_REG_MODE_SIMO_NORMAL));
+}
+
+// workaround: port of semtech's code altered to use local freq/highFreq - magic numbers are theirs
+// https://github.com/Lora-net/usp/blob/351b20153506/smtc_rac_lib/radio_drivers/lr20xx_driver/src/lr20xx_workarounds.c
+int16_t LR2021::setDCDCworkaround() {
+  uint32_t adcCtrlRaw = 0;
+  int16_t state = this->readRegMem32(RADIOLIB_LR2021_REG_DCDC_ADC_CTRL, &adcCtrlRaw, 1);
+  RADIOLIB_ASSERT(state);
+  const uint32_t anaDec = ( adcCtrlRaw >> 8 ) & 0x7;
+
+  if (!this->highFreq && (anaDec == 1 || anaDec == 2)) {
+    state = this->writeRegMemMask32(RADIOLIB_LR2021_REG_DCDC_SWITCHER, 0x0FUL << 20, 11UL << 20);
+    RADIOLIB_ASSERT(state);
+    state = this->writeRegMemMask32(RADIOLIB_LR2021_REG_DCDC_SWITCHER, 0x0FUL << 16, 13UL << 16);
+    RADIOLIB_ASSERT(state);
+  } else {
+    state = this->writeRegMemMask32(RADIOLIB_LR2021_REG_DCDC_SWITCHER, 0x0FUL << 20, 15UL << 20);
+    RADIOLIB_ASSERT(state);    
+    state = this->writeRegMemMask32(RADIOLIB_LR2021_REG_DCDC_SWITCHER, 0x0FUL << 16, 15UL << 16);
+    RADIOLIB_ASSERT(state);
+  }
+
+  // semtech number: 2800000 * 1.048576f (lines 558, 666)
+  uint32_t freq_lf = 2936012;
+  if (anaDec == 1) {
+    // semtech number: 4300000 * 1.048576f (lines 554, 666)
+    freq_lf = 4508876;
+  } 
+  state = this->writeRegMem32(RADIOLIB_LR2021_REG_DCDC_FREQ_LF, &freq_lf, 1);
+  RADIOLIB_ASSERT(state);
+  
+  state = this->setFrequency(this->freqHz, true);
+  return(state);
+}
+
+int16_t LR2021::resetDCDCworkaround() {
+  int16_t state = this->writeRegMemMask32(RADIOLIB_LR2021_REG_DCDC_SWITCHER, 0x0FUL << 20, 15UL << 20);
+  RADIOLIB_ASSERT(state);
+
+  state = this->writeRegMemMask32(RADIOLIB_LR2021_REG_DCDC_SWITCHER, 0x0FUL << 16, 15UL << 16);
+  RADIOLIB_ASSERT(state);
+
+  // semtech number: 2800000 * 1.048576f (lines 558, 666)
+  uint32_t freq_lf = 2936012;
+  state = this->writeRegMem32(RADIOLIB_LR2021_REG_DCDC_FREQ_LF, &freq_lf, 1);
+  RADIOLIB_ASSERT(state);
+
+  if(this->freqHz) {
+    state = this->setFrequency(this->freqHz, true);
+  }
+  return(state);
+}
+
+int16_t LR2021::setFifoSize(bool rx, size_t size) {
+  // set the base
+  uint32_t fifo_base = rx ? RADIOLIB_LR2021_RX_FIFO_BASE_ADDR : RADIOLIB_LR2021_TX_FIFO_BASE_ADDR;
+  int16_t state = this->writeRegMem32(rx ? RADIOLIB_LR2021_REG_RX_FIFO_BASE : RADIOLIB_LR2021_REG_TX_FIFO_BASE, &fifo_base, 1);
+  RADIOLIB_ASSERT(state);
+
+  // set the size
+  // Rx and Tx FIFO sizes are "coded" differently in the official driver,
+  // and seem to suggest different size limits
+  uint32_t fifo_size;
+  if(rx) {
+    if((size < 24) || (size > 1024)) {
+      return(RADIOLIB_ERR_PACKET_TOO_LONG);
+    }
+    fifo_size = size - 24; 
+  } else {
+    if((size < 4) || (size > 1024)) {
+      return(RADIOLIB_ERR_PACKET_TOO_LONG);
+    }
+    fifo_size = size - 4; 
+  }
+  state = this->writeRegMem32(rx ? RADIOLIB_LR2021_REG_RX_FIFO_SIZE : RADIOLIB_LR2021_REG_TX_FIFO_SIZE, &fifo_size, 1);
+
+  //! \todo [LR2021] Implement FIFO config retention through sleep mode
+  return(state);
+}
+
+int16_t LR2021::setIQStream(uint32_t rate, bool fifo) {
+  // rate is configured via LoRa bandwidth
+  int16_t state = this->setBandwidth(rate/4);
+  RADIOLIB_ASSERT(state);
+
+  // if the destination is FIFO, enable 1024-byte RX FIFO size
+  if(fifo) {
+    state = this->setFifoSize(true, 1024);
+    RADIOLIB_ASSERT(state);
+  }
+
+  // route source 2 using some magic numbers
+  uint8_t buff[] = { 0xFF, 0x00, 0x00, 0x00, 0x00, 0x92, 0x00, 0x00, 0x00, 0xFF, 0x00 };
+  if(fifo) {
+    buff[5] = 0x0A;
+    buff[9] = 0x00;
+    buff[10] = 0x01;
+  }
+  return(this->SPIcommand(RADIOLIB_LR2021_CMD_SET_SOURCE2, true, buff, sizeof(buff)));
 }
 
 #endif

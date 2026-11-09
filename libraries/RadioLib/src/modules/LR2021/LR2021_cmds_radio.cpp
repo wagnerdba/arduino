@@ -13,7 +13,11 @@ int16_t LR2021::setRfFrequency(uint32_t rfFreq) {
 
 int16_t LR2021::setRxPath(uint8_t rxPath, uint8_t rxBoost) {
   uint8_t buff[] = { (uint8_t)(rxPath & 0x01), (uint8_t)(rxBoost & 0x07) };
-  return(this->SPIcommand(RADIOLIB_LR2021_CMD_SET_RX_PATH, true, buff, sizeof(buff)));
+  int16_t state = this->SPIcommand(RADIOLIB_LR2021_CMD_SET_RX_PATH, true, buff, sizeof(buff));
+  if (state == RADIOLIB_ERR_NONE) {
+    state = this->setDCDCworkaround();
+  }
+  return(state);
 }
 
 int16_t LR2021::getRssiInst(float* rssi) {
@@ -21,7 +25,7 @@ int16_t LR2021::getRssiInst(float* rssi) {
   int16_t state = this->SPIcommand(RADIOLIB_LR2021_CMD_GET_RSSI_INST, false, buff, sizeof(buff));
   if(rssi) {
     uint16_t raw = ((uint16_t)(buff[0]) << 1) | (uint16_t)((buff[1] >> 7) & 0x01);
-    *rssi = (float)raw/-2.0f;
+    *rssi = (float)raw * -0.5f;
   }
   return(state);
 }
@@ -63,15 +67,15 @@ int16_t LR2021::getCcaResult(float* rssiMin, float* rssiMax, float* rssiAvg) {
   uint16_t raw;
   if(rssiMin) {
     raw = ((uint16_t)(buff[0]) << 1) | (uint16_t)((buff[3] >> 2) & 0x01);
-    *rssiMin = (float)raw/-2.0f;
+    *rssiMin = (float)raw * -0.5f;
   }
   if(rssiMax) {
     raw = ((uint16_t)(buff[1]) << 1) | (uint16_t)((buff[3] >> 1) & 0x01);
-    *rssiMax = (float)raw/-2.0f;
+    *rssiMax = (float)raw * -0.5f;
   }
   if(rssiAvg) {
     raw = ((uint16_t)(buff[2]) << 1) | (uint16_t)((buff[3] >> 0) & 0x01);
-    *rssiAvg = (float)raw/-2.0f;
+    *rssiAvg = (float)raw * -0.5f;
   }
   return(state);
 }
@@ -108,7 +112,11 @@ int16_t LR2021::setTxParams(int8_t txPower, uint8_t rampTime) {
 }
 
 int16_t LR2021::setPacketType(uint8_t packetType) {
-  return(this->SPIcommand(RADIOLIB_LR2021_CMD_SET_PACKET_TYPE, true, &packetType, sizeof(packetType)));
+  int16_t state = this->SPIcommand(RADIOLIB_LR2021_CMD_SET_PACKET_TYPE, true, &packetType, sizeof(packetType));
+  if (state == RADIOLIB_ERR_NONE) {
+    state = this->resetDCDCworkaround();
+  }
+  return(state);
 }
 
 int16_t LR2021::getPacketType(uint8_t* packetType) {

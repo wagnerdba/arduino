@@ -245,6 +245,15 @@
 #elif defined(ARDUINO_ARCH_STM32)
   // official STM32 Arduino core (https://github.com/stm32duino/Arduino_Core_STM32)
   #define RADIOLIB_PLATFORM                           "Arduino STM32 (official)"
+  #if defined(ARDUINO_API_VERSION)
+    // core releases that pulled in ArduinoCore-API (api/ArduinoAPI.h, which defines this
+    // macro) moved pinMode()/digitalWrite()/attachInterrupt() to typed PinMode/PinStatus
+    // arguments; older releases predate ArduinoCore-API and keep the untyped uint32_t
+    // signatures, so they fall through to the untyped default below instead.
+    #define RADIOLIB_ARDUINOHAL_PIN_MODE_CAST           (PinMode)
+    #define RADIOLIB_ARDUINOHAL_PIN_STATUS_CAST         (PinStatus)
+    #define RADIOLIB_ARDUINOHAL_INTERRUPT_MODE_CAST     (PinStatus)
+  #endif
 
 #elif defined(SAMD_SERIES)
   // Adafruit SAMD boards (M0 and M4)
@@ -485,6 +494,27 @@
 
   #include <stdint.h>
 
+#elif defined(ESP_PLATFORM)
+  // ESP-IDF (non-Arduino) build
+  #define RADIOLIB_PLATFORM                           "ESP-IDF"
+  #define RADIOLIB_ESP32
+
+  // ESP32 doesn't support tone(), but it can be emulated via LED control peripheral
+  #define RADIOLIB_TONE_UNSUPPORTED
+
+  #define RADIOLIB_NC                                 (0xFFFFFFFF)
+  #define RADIOLIB_NONVOLATILE
+  #define RADIOLIB_NONVOLATILE_READ_BYTE(addr)        (*(reinterpret_cast<uint8_t *>(reinterpret_cast<void *>(addr))))
+  #define RADIOLIB_NONVOLATILE_READ_DWORD(addr)       (*(reinterpret_cast<uint32_t *>(reinterpret_cast<void *>(addr))))
+  #define RADIOLIB_TYPE_ALIAS(type, alias)            using alias = type;
+
+  #define DEC 10
+  #define HEX 16
+  #define OCT 8
+  #define BIN 2
+
+  #include <stdint.h>
+
 #else
   // generic non-Arduino platform
   #define RADIOLIB_PLATFORM                           "Generic"
@@ -511,8 +541,8 @@
 #endif
 
 // if verbose assert is enabled, enable basic debug too
-#if RADIOLIB_VERBOSE_ASSERT
-  #define RADIOLIB_DEBUG  (1)
+#if RADIOLIB_VERBOSE_ASSERT && !defined(RADIOLIB_DEBUG_BASIC)
+  #define RADIOLIB_DEBUG_BASIC  (1)
 #endif
 
 // set the global debug mode flag
@@ -651,14 +681,15 @@
 #endif
 
 // these macros are usually defined by Arduino, but some platforms undef them, so its safer to use our own
-#define RADIOLIB_MIN(a,b)				((a)<(b)?(a):(b))
-#define RADIOLIB_MAX(a,b)				((a)>(b)?(a):(b))
-#define RADIOLIB_ABS(x)         ((x)>0?(x):-(x))
+#define RADIOLIB_MIN(a,b)				    ((a)<(b)?(a):(b))
+#define RADIOLIB_MAX(a,b)				    ((a)>(b)?(a):(b))
+#define RADIOLIB_ABS(x)             ((x)>0?(x):-(x))
+#define RADIOLIB_ABS_UNSIGNED(a,b)  ((a)>(b)?((a)-(b)):((b)-(a)))
 
 // version definitions
-#define RADIOLIB_VERSION_MAJOR  7
-#define RADIOLIB_VERSION_MINOR  7
-#define RADIOLIB_VERSION_PATCH  1
+#define RADIOLIB_VERSION_MAJOR  8
+#define RADIOLIB_VERSION_MINOR  0
+#define RADIOLIB_VERSION_PATCH  0
 #define RADIOLIB_VERSION_EXTRA  0
 
 #define RADIOLIB_VERSION (((RADIOLIB_VERSION_MAJOR) << 24) | ((RADIOLIB_VERSION_MINOR) << 16) | ((RADIOLIB_VERSION_PATCH) << 8) | (RADIOLIB_VERSION_EXTRA))

@@ -59,10 +59,15 @@ void setFlag(void) {
 void setup() {
   Serial.begin(9600);
 
+  // before calling begin(), correct crystal has to be selected
+  // most SX126x have a TCXO which needs 1.6V reference
+  // set to 0 if your radio has an XTAL
+  radio.tcxoVoltage = RadioLibTCXOVoltage_t::Voltage1V6;
+
   // initialize SX1262 at 434 MHz
   Serial.print(F("[SX1262] Initializing ... "));
   ConfigLRFHSS_t config;
-  config.frequency = 434;
+  config.frequency = RADIOLIB_UNIT_MEGA(434);
   int state = radio.beginLRFHSS(config);
   if (state == RADIOLIB_ERR_NONE) {
     Serial.println(F("success!"));
@@ -74,7 +79,7 @@ void setup() {
 
   // set the function that will be called
   // when packet transmission is finished
-  radio.setPacketSentAction(setFlag);
+  radio.setIrqAction(setFlag);
 
   // start transmitting the first packet
   Serial.print(F("[SX1262] Sending first packet ... "));

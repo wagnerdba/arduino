@@ -71,13 +71,13 @@ class PagerClient {
 
     /*!
       \brief Initialization method.
-      \param base Base (center) frequency to be used in MHz.
+      \param base Base (center) RF frequency to be used in Hz.
       \param speed Bit rate to use in bps. Common POCSAG decoders can receive 512, 1200 and 2400 bps.
       \param invert Enable frequency inversion. Disabled by default (high frequency is digital 0).
       \param shift Set custom frequency shift, defaults to 4500 Hz.
       \returns \ref status_codes
     */
-    int16_t begin(float base, uint16_t speed, bool invert = false, uint16_t shift = RADIOLIB_PAGER_FREQ_SHIFT_HZ);
+    int16_t begin(uint32_t base, uint16_t speed, bool invert = false, uint16_t shift = RADIOLIB_PAGER_FREQ_SHIFT_HZ);
 
     /*!
       \brief Method to send a tone-only alert to a destination pager.
@@ -162,9 +162,10 @@ class PagerClient {
     /*!
       \brief Reads data that was received after calling startReceive method.
       \param data Pointer to array to save the received message.
-      \param len Pointer to variable holding the number of bytes that will be read. When set to 0, the packet length
-      will be retrieved automatically. When more bytes than received are requested, only the number of bytes
-      requested will be returned. Upon completion, the number of bytes received will be written to this variable.
+      \param len Pointer to variable holding the number of bytes that will be read. 
+      When set to 0, the packet length will be retrieved automatically.
+      When set to non-zero value, it is the maximum number of bytes that will be read.
+      Upon completion, the number of bytes actually received will be written to this variable.
       \param addr Pointer to variable holding the address of the received pager message.
       Set to NULL to not retrieve address.
       \returns \ref status_codes

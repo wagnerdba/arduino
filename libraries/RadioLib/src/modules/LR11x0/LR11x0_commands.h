@@ -218,7 +218,8 @@
 #define RADIOLIB_LR11X0_CALIBRATE_HF_RC                         (0x01UL << 1)   //  1     1                high frequency RC
 #define RADIOLIB_LR11X0_CALIBRATE_LF_RC                         (0x01UL << 0)   //  0     0                low frequency RC
 #define RADIOLIB_LR11X0_CALIBRATE_ALL                           (0x3FUL << 0)   //  5     0                everything
-#define RADIOLIB_LR11X0_CAL_IMG_FREQ_TRIG_MHZ                   (20.0f)
+#define RADIOLIB_LR11X0_CAL_IMG_FREQ_TRIG_MHZ                   (20)
+#define RADIOLIB_LR11X0_LF_CUTOFF_FREQ                          (RADIOLIB_UNIT_MEGA(1000))
 
 // RADIOLIB_LR11X0_CMD_SET_REG_MODE
 #define RADIOLIB_LR11X0_REG_MODE_LDO                            (0x00UL << 0)   //  0     0     regulator mode: LDO in all modes
@@ -279,7 +280,7 @@
 
 // RADIOLIB_LR11X0_CMD_SET_STANDBY
 #define RADIOLIB_LR11X0_STANDBY_RC                              (0x00UL << 0)   //  7     0     standby mode: RC oscillator
-#define RADIOLIB_LR11X0_STANDBY_XOSC                            (0x00UL << 0)   //  7     0                   XTAL/TCXO oscillator
+#define RADIOLIB_LR11X0_STANDBY_XOSC                            (0x01UL << 0)   //  7     0                   XTAL/TCXO oscillator
 
 // RADIOLIB_LR11X0_CMD_ERASE_INFO_PAGE
 #define RADIOLIB_LR11X0_INFO_PAGE                               (1)
@@ -450,6 +451,7 @@
 // RADIOLIB_LR11X0_CMD_GET_LORA_RX_HEADER_INFOS
 #define RADIOLIB_LR11X0_LAST_HEADER_CRC_ENABLED                 (0x01UL << 4)   //  4     4     last header CRC: enabled
 #define RADIOLIB_LR11X0_LAST_HEADER_CRC_DISABLED                (0x00UL << 4)   //  4     4                      disabled
+#define RADIOLIB_LR11X0_LAST_HEADER_CR_MASK                     (0x07UL << 0)   //  2     0     last header coding rate
 
 // RADIOLIB_LR11X0_CMD_WIFI_SCAN
 #define RADIOLIB_LR11X0_WIFI_SCAN_802_11_B                      (0x01UL << 0)   //  7     0     Wi-Fi type to scan: 802.11b

@@ -19,6 +19,7 @@ LR2021::LR2021(Module* mod) : LRxxxx(mod) {
   this->irqMap[RADIOLIB_IRQ_CAD_DONE] = RADIOLIB_LR2021_IRQ_CAD_DONE;
   this->irqMap[RADIOLIB_IRQ_CAD_DETECTED] = RADIOLIB_LR2021_IRQ_CAD_DETECTED;
   this->irqMap[RADIOLIB_IRQ_TIMEOUT] = RADIOLIB_LR2021_IRQ_TIMEOUT;
+  this->updatePowerLimits(false);
 }
 
 int16_t LR2021::begin(const ConfigLoRa_t& cfg) {
@@ -53,22 +54,9 @@ int16_t LR2021::begin(const ConfigLoRa_t& cfg) {
   return(state);
 }
 
-int16_t LR2021::begin(float freq, float bw, uint8_t sf, uint8_t cr, uint8_t syncWord, int8_t power, uint16_t preambleLength, float tcxoVoltage) {
-  ConfigLoRa_t cfg;
-  cfg.frequency = freq;
-  cfg.bandwidth = bw;
-  cfg.spreadingFactor = sf;
-  cfg.codingRate = cr;
-  cfg.syncWord = syncWord;
-  cfg.power = power;
-  cfg.preambleLength = preambleLength;
-  this->tcxoVoltage = tcxoVoltage;
-  return(begin(cfg));
-}
-
 int16_t LR2021::beginGFSK(const ConfigFSK_t& cfg) {
   this->rxBandwidth = RADIOLIB_LR2021_GFSK_OOK_RX_BW_153_8;
-  this->frequencyDev = cfg.frequencyDeviation * 1000.0f;
+  this->frequencyDev = cfg.frequencyDeviation;
 
   // set module properties and perform initial setup
   int16_t state = this->modSetup(cfg.frequency, RADIOLIB_LR2021_PACKET_TYPE_GFSK);
@@ -108,18 +96,6 @@ int16_t LR2021::beginGFSK(const ConfigFSK_t& cfg) {
   return(state);
 }
 
-int16_t LR2021::beginGFSK(float freq, float br, float freqDev, float rxBw, int8_t power, uint16_t preambleLength, float tcxoVoltage) {
-  ConfigFSK_t cfg;
-  cfg.frequency = freq;
-  cfg.bitRate = br;
-  cfg.frequencyDeviation = freqDev;
-  cfg.receiverBandwidth = rxBw;
-  cfg.power = power;
-  cfg.preambleLength = preambleLength;
-  this->tcxoVoltage = tcxoVoltage;
-  return(beginGFSK(cfg));
-}
-
 int16_t LR2021::beginOOK(const ConfigOOK_t& cfg) {
   this->rxBandwidth = RADIOLIB_LR2021_GFSK_OOK_RX_BW_153_8;
 
@@ -157,28 +133,14 @@ int16_t LR2021::beginOOK(const ConfigOOK_t& cfg) {
   state = setCRC(2);
   return(state);
 }
-    
-int16_t LR2021::beginOOK(float freq, float br, float rxBw, int8_t power, uint16_t preambleLength, float tcxoVoltage) {
-  ConfigOOK_t cfg;
-  cfg.frequency = freq;
-  cfg.bitRate = br;
-  cfg.receiverBandwidth = rxBw;
-  cfg.power = power;
-  cfg.preambleLength = preambleLength;
-  this->tcxoVoltage = tcxoVoltage;
-  return(beginOOK(cfg));
-}
 
 int16_t LR2021::beginLRFHSS(const ConfigLRFHSS_t& cfg) {
   // set module properties and perform initial setup
   int16_t state = this->modSetup(cfg.frequency, RADIOLIB_LR2021_PACKET_TYPE_LR_FHSS);
   RADIOLIB_ASSERT(state);
 
-  // set grid spacing
-  this->lrFhssGrid = cfg.narrowGrid ? RADIOLIB_LRXXXX_LR_FHSS_GRID_STEP_NON_FCC : RADIOLIB_LRXXXX_LR_FHSS_GRID_STEP_FCC;
-
   // configure publicly accessible settings
-  state = setLrFhssConfig(cfg.bandwidth, cfg.codingRate);
+  state = setLrFhssConfig(cfg.bandwidth, cfg.codingRate, cfg.narrowGrid);
   RADIOLIB_ASSERT(state);
 
   state = setOutputPower(cfg.power);
@@ -187,17 +149,6 @@ int16_t LR2021::beginLRFHSS(const ConfigLRFHSS_t& cfg) {
   uint8_t syncWord[] = { 0x12, 0xAD, 0x10, 0x1B };
   state = setSyncWord(syncWord, 4);
   return(state);
-}
-    
-int16_t LR2021::beginLRFHSS(float freq, uint8_t bw, uint8_t cr, bool narrowGrid, int8_t power, float tcxoVoltage) {
-  ConfigLRFHSS_t cfg;
-  cfg.frequency = freq;
-  cfg.bandwidth = bw;
-  cfg.codingRate = cr;
-  cfg.narrowGrid = narrowGrid;
-  cfg.power = power;
-  this->tcxoVoltage = tcxoVoltage;
-  return(beginLRFHSS(cfg));
 }
 
 int16_t LR2021::beginFLRC(const ConfigFLRC_t& cfg) {
@@ -242,18 +193,6 @@ int16_t LR2021::beginFLRC(const ConfigFLRC_t& cfg) {
   return(state);
 }
 
-int16_t LR2021::beginFLRC(float freq, uint16_t br, uint8_t cr, int8_t pwr, uint16_t preambleLength, uint8_t dataShaping, float tcxoVoltage) {
-  ConfigFLRC_t cfg;
-  cfg.frequency = freq;
-  cfg.bitRate = br;
-  cfg.codingRate = cr;
-  cfg.power = pwr;
-  cfg.preambleLength = preambleLength;
-  cfg.dataShaping = dataShaping;
-  this->tcxoVoltage = tcxoVoltage;
-  return(beginFLRC(cfg));
-}
-
 int16_t LR2021::transmit(const uint8_t* data, size_t len, uint8_t addr) {
    // set mode to standby
   int16_t state = standby();
@@ -267,7 +206,7 @@ int16_t LR2021::transmit(const uint8_t* data, size_t len, uint8_t addr) {
     }
 
     // Long Interleaver supports up to 253 bytes if CRC is enabled
-    if (this->crcTypeLoRa == RADIOLIB_LR2021_LORA_CRC_ENABLED && (len > RADIOLIB_LR2021_MAX_PACKET_LENGTH - 2)) {
+    if (this->crcTypeLoRa == RADIOLIB_LRXXXX_LORA_CRC_ENABLED && (len > RADIOLIB_LR2021_MAX_PACKET_LENGTH - 2)) {
       return(RADIOLIB_ERR_PACKET_TOO_LONG);
     }  
   } 
@@ -348,7 +287,7 @@ int16_t LR2021::receive(uint8_t* data, size_t len, RadioLibTime_t timeout) {
   RADIOLIB_DEBUG_BASIC_PRINTLN("Timeout in %lu ms", timeoutInternal);
 
   // start reception
-  uint32_t timeoutValue = (uint32_t)(((float)timeoutInternal * 1000.0f) / 30.52f);
+  uint32_t timeoutValue = (uint32_t)((float)timeoutInternal * (1000.0f / 30.52f));
   state = startReceive(timeoutValue);
   RADIOLIB_ASSERT(state);
 
@@ -411,7 +350,8 @@ int16_t LR2021::scanChannel() {
       .detPeak = RADIOLIB_LR2021_CAD_PARAM_DEFAULT,
       .detMin = RADIOLIB_LR2021_CAD_PARAM_DEFAULT,
       .exitMode = RADIOLIB_LR2021_CAD_PARAM_DEFAULT,
-      .timeout = 0,
+      .rxTimeout = 0,
+      .rxSymbols = 0,
       .irqFlags = RADIOLIB_IRQ_CAD_DEFAULT_FLAGS,
       .irqMask = RADIOLIB_IRQ_CAD_DEFAULT_MASK,
     },
@@ -434,7 +374,7 @@ int16_t LR2021::scanChannel(const ChannelScanConfig_t &cfg) {
 }
 
 int16_t LR2021::standby() {
-  return(this->standby(RADIOLIB_LR2021_STANDBY_RC));
+  return(LR2021::standby(this->standbyXOSC ? RADIOLIB_LR2021_STANDBY_XOSC : RADIOLIB_LR2021_STANDBY_RC));
 }
 
 int16_t LR2021::standby(uint8_t mode) {
@@ -483,7 +423,7 @@ size_t LR2021::getPacketLength(bool update) {
   // in implicit mode, return the cached value
   uint8_t type = RADIOLIB_LR2021_PACKET_TYPE_NONE;
   (void)getPacketType(&type);
-  if((type == RADIOLIB_LR2021_PACKET_TYPE_LORA) && (this->headerType == RADIOLIB_LR2021_LORA_HEADER_IMPLICIT)) {
+  if((type == RADIOLIB_LR2021_PACKET_TYPE_LORA) && (this->headerType == RADIOLIB_LRXXXX_LORA_HEADER_IMPLICIT)) {
     return(this->implicitLen);
   }
 
@@ -512,8 +452,8 @@ int16_t LR2021::startReceiveDutyCycle(uint32_t rxPeriod, uint32_t sleepPeriod, R
   // divide by 30.517 microseconds (RTC period, 1/32.768 kHz)
   // the datasheet claims the RTC frequency is 32 kHz; however, using that makes the timing inaccurate
   // so it looks like the actual value is the 32.768 kHz used on the previous LR11xx chips
-  uint32_t rxPeriodRaw = (rxPeriod * 32768UL) / 1000000UL;
-  uint32_t sleepPeriodRaw = (sleepPeriod * 32768UL) / 1000000UL;
+  uint32_t rxPeriodRaw = (uint32_t)(((uint64_t)rxPeriod * 34360) >> 20);
+  uint32_t sleepPeriodRaw = (uint32_t)(((uint64_t)sleepPeriod * 34360) >> 20);
 
   // check 24 bit limit and zero value (likely not intended)
   if((rxPeriodRaw & 0xFF000000) || (rxPeriodRaw == 0)) {
@@ -529,6 +469,7 @@ int16_t LR2021::startReceiveDutyCycle(uint32_t rxPeriod, uint32_t sleepPeriod, R
   RadioModeConfig_t cfg = {
     .receive = {
       .timeout = RADIOLIB_LR2021_RX_TIMEOUT_INF,
+      .syncSymbols = 0,
       .irqFlags = irqFlags,
       .irqMask = irqMask,
       .len = 0,
@@ -548,7 +489,7 @@ int16_t LR2021::startReceiveDutyCycleAuto(uint16_t senderPreambleLength, uint16_
   DataRate_t dr = {
     .lora = {
       .spreadingFactor = this->spreadingFactor,
-      .bandwidth = this->bandwidthKhz,
+      .bandwidth = this->bandwidthHz,
       .codingRate = this->codingRate,
     }
   };
@@ -584,12 +525,12 @@ int16_t LR2021::readData(uint8_t* data, size_t len) {
     crcState = RADIOLIB_ERR_CRC_MISMATCH;
   }
 
-  // for LoRa modem and explicit header mode, check also also header valid flag
-  if((modem == RADIOLIB_LR2021_PACKET_TYPE_LORA) &&
-     (this->headerType == RADIOLIB_LR2021_LORA_HEADER_EXPLICIT) && 
-     (!(irq & RADIOLIB_LR2021_IRQ_LORA_HEADER_VALID))) {
-    crcState = RADIOLIB_ERR_LORA_HEADER_DAMAGED;
-  }
+  // // for LoRa modem and explicit header mode, check also also header valid flag
+  // if((modem == RADIOLIB_LR2021_PACKET_TYPE_LORA) &&
+  //    (this->headerType == RADIOLIB_LRXXXX_LORA_HEADER_EXPLICIT) && 
+  //    (!(irq & RADIOLIB_LR2021_IRQ_LORA_HEADER_VALID))) {
+  //   crcState = RADIOLIB_ERR_LORA_HEADER_DAMAGED;
+  // }
 
   // get packet length
   size_t length = getPacketLength();
@@ -631,7 +572,8 @@ int16_t LR2021::startChannelScan() {
       .detPeak = RADIOLIB_LR2021_CAD_PARAM_DEFAULT,
       .detMin = RADIOLIB_LR2021_CAD_PARAM_DEFAULT,
       .exitMode = RADIOLIB_LR2021_CAD_PARAM_DEFAULT,
-      .timeout = 0,
+      .rxTimeout = 0,
+      .rxSymbols = 0,
       .irqFlags = RADIOLIB_IRQ_CAD_DEFAULT_FLAGS,
       .irqMask = RADIOLIB_IRQ_CAD_DEFAULT_MASK,
     },
@@ -665,8 +607,12 @@ int16_t LR2021::startChannelScan(const ChannelScanConfig_t &cfg) {
   state = clearIrqState(RADIOLIB_LR2021_IRQ_ALL);
   RADIOLIB_ASSERT(state);
 
+  // set LoRa symbol timeout
+  state = setLoRaSynchTimeout(cfg.cad.rxSymbols);
+  RADIOLIB_ASSERT(state);
+  
   // set mode to CAD
-  return(startCad(cfg.cad.symNum, cfg.cad.detPeak, this->fastCad, cfg.cad.exitMode, cfg.cad.timeout));
+  return(startCad(cfg.cad.symNum, cfg.cad.detPeak, this->fastCad, cfg.cad.exitMode, cfg.cad.rxTimeout));
 }
 
 int16_t LR2021::getChannelScanResult() {
@@ -707,25 +653,30 @@ int16_t LR2021::clearIrqFlags(uint32_t irq) {
 int16_t LR2021::setModem(ModemType_t modem) {
   switch(modem) {
     case(ModemType_t::RADIOLIB_MODEM_LORA): {
-      return(this->begin());
+      ConfigLoRa_t cfg;
+      return(this->begin(cfg));
     } break;
     case(ModemType_t::RADIOLIB_MODEM_FSK): {
-      return(this->beginGFSK());
+      ConfigFSK_t cfg;
+      return(this->beginGFSK(cfg));
     } break;
     case(ModemType_t::RADIOLIB_MODEM_LRFHSS): {
-      return(this->beginLRFHSS());
+      ConfigLRFHSS_t cfg;
+      return(this->beginLRFHSS(cfg));
     } break;
     default:
       return(RADIOLIB_ERR_WRONG_MODEM);
   }
+  return(RADIOLIB_ERR_WRONG_MODEM);
 }
 
 Module* LR2021::getMod() {
   return(this->mod);
 }
 
-int16_t LR2021::modSetup(float freq, uint8_t modem) {
-  this->mod->init();
+int16_t LR2021::modSetup(uint32_t freq, uint8_t modem) {
+  int16_t state = this->mod->init();
+  RADIOLIB_ASSERT(state);
   this->mod->hal->pinMode(this->mod->getIrq(), this->mod->hal->GpioModeInput);
   this->mod->hal->pinMode(this->mod->getGpio(), this->mod->hal->GpioModeInput);
   this->mod->spiConfig.cmds[RADIOLIB_MODULE_SPI_COMMAND_READ] = RADIOLIB_LR2021_CMD_READ_REG_MEM_32;
@@ -738,17 +689,19 @@ int16_t LR2021::modSetup(float freq, uint8_t modem) {
   // try to find the chip - this will also reset the module at least once
   if(!this->findChip()) {
     RADIOLIB_DEBUG_BASIC_PRINTLN("No LR2021 found!");
-    this->mod->term();
+    state = this->mod->term();
+    RADIOLIB_ASSERT(state);
     return(RADIOLIB_ERR_CHIP_NOT_FOUND);
   }
   RADIOLIB_DEBUG_BASIC_PRINTLN("M\tLR2021");
 
   // set mode to standby
-  int16_t state = standby();
+  // force the device to use RC oscillator, as XOSC may not be ready yet
+  state = standby(RADIOLIB_LR2021_STANDBY_RC);
   RADIOLIB_ASSERT(state);
 
   // set TCXO control, if requested
-  if(this->tcxoVoltage > 0.0f) {
+  if(this->tcxoVoltage != RadioLibTCXOVoltage_t::VoltageNone) {
     state = setTCXO(this->tcxoVoltage);
     RADIOLIB_ASSERT(state);
   }
@@ -756,6 +709,14 @@ int16_t LR2021::modSetup(float freq, uint8_t modem) {
   // configure settings not accessible by API
   state = config(modem);
   RADIOLIB_ASSERT(state);
+
+  // restore RF switch configuration, if it exists
+  uint32_t pins[Module::RFSWITCH_MAX_PINS];
+  const Module::RfSwitchMode_t* table = nullptr;
+  this->mod->getRfSwitchTable(pins, &table);
+  if(table != nullptr) {
+    this->setRfSwitchTable(pins, table);
+  }
 
   state = setFrequency(freq);
   return(state);
@@ -793,8 +754,8 @@ bool LR2021::findChip(void) {
 }
 
 int16_t LR2021::config(uint8_t modem) {
-  // set Rx/Tx fallback mode to STDBY_RC
-  int16_t state = this->setRxTxFallbackMode(RADIOLIB_LR2021_FALLBACK_MODE_STBY_RC);
+  // set Rx/Tx fallback mode
+  int16_t state = this->setRxTxFallbackMode(this->standbyXOSC ? RADIOLIB_LR2021_FALLBACK_MODE_STBY_XOSC : RADIOLIB_LR2021_FALLBACK_MODE_STBY_RC);
   RADIOLIB_ASSERT(state);
 
   // clear IRQ
@@ -828,9 +789,8 @@ int16_t LR2021::config(uint8_t modem) {
     getErrors(&errors);
     RADIOLIB_DEBUG_BASIC_PRINTLN("Calibration failed, device errors: 0x%X", errors);
   }
-  #else
-  RADIOLIB_ASSERT(state);
   #endif
+  RADIOLIB_ASSERT(state);
 
   // set modem
   state = this->setPacketType(modem);
@@ -865,10 +825,10 @@ int16_t LR2021::startCad(uint8_t symbolNum, uint8_t detPeak, bool fast, uint8_t 
 
   uint8_t mode = exitMode; 
   if(mode == RADIOLIB_LR2021_CAD_PARAM_DEFAULT) {
-    mode = RADIOLIB_LR2021_CAD_EXIT_MODE_FALLBACK;
+    mode = RADIOLIB_LR2021_LORA_CAD_EXIT_MODE_FALLBACK;
   }
 
-  uint32_t timeout_raw = (float)timeout / 30.52f;
+  uint32_t timeout_raw = (uint32_t)((float)timeout * (1.0f / 30.52f));
 
   // set LoRa CAD parameters
   // preamble only mode is intentionally disabled, as it is unreliable according to the datasheet
@@ -877,6 +837,17 @@ int16_t LR2021::startCad(uint8_t symbolNum, uint8_t detPeak, bool fast, uint8_t 
 
   // start LoraCAD
   return(setLoRaCad());
+}
+
+void LR2021::updatePowerLimits(bool highFreq) {
+  if(highFreq) {
+    this->powerMin = RADIOLIB_LR2021_HF_POUT_MIN;
+    this->powerMax = RADIOLIB_LR2021_HF_POUT_MAX;
+  } else {
+    this->powerMin = RADIOLIB_LR2021_LF_POUT_MIN;
+    this->powerMax = RADIOLIB_LR2021_LF_POUT_MAX;
+  }
+  this->paSteps = this->powerMax - this->powerMin + 1;
 }
 
 RadioLibTime_t LR2021::getTimeOnAir(size_t len) {
@@ -911,16 +882,16 @@ RadioLibTime_t LR2021::getTimeOnAir(size_t len) {
           break;
         case(RADIOLIB_LR2021_FLRC_CR_3_4):
           n_coded_bits += 6;
-          n_coded_bits_flt = ((float)n_coded_bits*4.0f)/3.0f;
+          n_coded_bits_flt = (float)n_coded_bits*(4.0f/3.0f);
           break;
         case(RADIOLIB_LR2021_FLRC_CR_2_3):
-          n_coded_bits_flt = ((float)n_coded_bits*3.0f)/2.0f;
+          n_coded_bits_flt = (float)n_coded_bits*(3.0f/2.0f);
           break;
       }
       n_coded_bits = n_coded_bits_flt + 0.5f;
 
       // now calculate the real time on air
-      return((float)(n_uncoded_bits + n_coded_bits) / (float)(this->bitRate / 1000.0f));
+      return((float)(n_uncoded_bits + n_coded_bits) / (float)(this->bitRate));
     } 
   }
 
@@ -950,6 +921,36 @@ int16_t LR2021::getModem(ModemType_t* modem) {
   return(RADIOLIB_ERR_WRONG_MODEM);
 }
 
+int16_t LR2021::getMode(RadioModeType_t* mode) {
+  RADIOLIB_ASSERT_PTR(mode);
+
+  uint8_t stat2 = 0;
+  int16_t state = getStatus(NULL, &stat2, NULL);
+  RADIOLIB_ASSERT(state);
+
+  switch(stat2 & 0b00000111) {
+    case(RADIOLIB_LR2021_STAT_2_MODE_SLEEP):
+      *mode = RADIOLIB_RADIO_MODE_SLEEP;
+      break;
+    case(RADIOLIB_LR2021_STAT_2_MODE_STBY_RC):
+    case(RADIOLIB_LR2021_STAT_2_MODE_STBY_XOSC):
+      *mode = RADIOLIB_RADIO_MODE_STANDBY;
+      break;
+    case(RADIOLIB_LR2021_STAT_2_MODE_RX):
+      *mode = RADIOLIB_RADIO_MODE_RX;
+      break;
+    case(RADIOLIB_LR2021_STAT_2_MODE_TX):
+      *mode = RADIOLIB_RADIO_MODE_TX;
+      break;
+    default:
+      // frequency synthesis, or a value this part does not assign
+      *mode = RADIOLIB_RADIO_MODE_NONE;
+      break;
+  }
+
+  return(RADIOLIB_ERR_NONE);
+}
+
 int16_t LR2021::stageMode(RadioModeType_t mode, RadioModeConfig_t* cfg) {
   int16_t state;
 
@@ -964,6 +965,14 @@ int16_t LR2021::stageMode(RadioModeType_t mode, RadioModeConfig_t* cfg) {
         (modem != RADIOLIB_LR2021_PACKET_TYPE_FLRC) && 
         (modem != RADIOLIB_LR2021_PACKET_TYPE_OOK)) {
         return(RADIOLIB_ERR_WRONG_MODEM);
+      }
+
+      // in implicit LoRa header mode, use the provided length if it is nonzero
+      // otherwise we trust the user has previously set the payload length manually
+      if((this->headerType == RADIOLIB_LRXXXX_LORA_HEADER_IMPLICIT) && 
+        (modem == RADIOLIB_LR2021_PACKET_TYPE_LORA) && 
+        (cfg->receive.len != 0)) {
+        this->implicitLen = cfg->receive.len;
       }
       
       // set the correct Rx path
@@ -981,12 +990,34 @@ int16_t LR2021::stageMode(RadioModeType_t mode, RadioModeConfig_t* cfg) {
       state = clearIrqState(RADIOLIB_LR2021_IRQ_ALL);
       RADIOLIB_ASSERT(state);
 
-      // set implicit mode and expected len if applicable
-      if((this->headerType == RADIOLIB_LR2021_LORA_HEADER_IMPLICIT) && (modem == RADIOLIB_LR2021_PACKET_TYPE_LORA)) {
-        state = setLoRaPacketParams(this->preambleLengthLoRa, this->headerType, 
-          (this->headerType == RADIOLIB_LR2021_LORA_HEADER_IMPLICIT) ? this->implicitLen : RADIOLIB_LR2021_MAX_PACKET_LENGTH, this->crcTypeLoRa, this->invertIQEnabled);
+      // restore maximum allowed received packet length (may have been changed by previous Tx)
+      if(modem == RADIOLIB_LR2021_PACKET_TYPE_LORA) {
+        state = setLoRaPacketParams(this->preambleLengthLoRa, this->headerType,
+          (this->headerType == RADIOLIB_LRXXXX_LORA_HEADER_IMPLICIT) ? this->implicitLen : RADIOLIB_LR2021_MAX_PACKET_LENGTH,
+          this->crcTypeLoRa, this->invertIQEnabled);
         RADIOLIB_ASSERT(state);
+
+        state = setLoRaSynchTimeout(cfg->receive.syncSymbols);
+
+      } else if(modem == RADIOLIB_LR2021_PACKET_TYPE_GFSK) {
+        state = setGfskPacketParams(this->preambleLengthGFSK, this->preambleDetLength, false, false, this->addrComp, this->packetType,
+          (this->packetType == RADIOLIB_LR2021_GFSK_OOK_PACKET_FORMAT_FIXED) ? this->implicitLen : RADIOLIB_LR2021_MAX_PACKET_LENGTH, 
+          this->crcTypeGFSK, this->whitening);
+
+      } else if(modem == RADIOLIB_LR2021_PACKET_TYPE_OOK) {
+        state = setOokPacketParams(this->preambleLengthGFSK, this->addrComp, this->packetType,
+          (this->packetType == RADIOLIB_LR2021_GFSK_OOK_PACKET_FORMAT_FIXED) ? this->implicitLen : RADIOLIB_LR2021_MAX_PACKET_LENGTH,
+          this->crcTypeGFSK, this->whitening);
+
+      } else if(modem == RADIOLIB_LR2021_PACKET_TYPE_FLRC) {
+        state = setFlrcPacketParams(this->preambleLengthGFSK, this->syncWordLength, 1, 0x01, this->packetType == RADIOLIB_LR2021_GFSK_OOK_PACKET_FORMAT_FIXED, this->crcLenGFSK,
+          (this->packetType == RADIOLIB_LR2021_GFSK_OOK_PACKET_FORMAT_FIXED) ? this->implicitLen : RADIOLIB_LR2021_MAX_PACKET_LENGTH);
+      
+      } else {
+        return(RADIOLIB_ERR_WRONG_MODEM);
       }
+      
+      RADIOLIB_ASSERT(state);
 
       // if max(uint32_t) is used, revert to RxContinuous
       if(cfg->receive.timeout == 0xFFFFFFFF) {
@@ -1020,7 +1051,7 @@ int16_t LR2021::stageMode(RadioModeType_t mode, RadioModeConfig_t* cfg) {
       } else if(modem == RADIOLIB_LR2021_PACKET_TYPE_FLRC) {
         state = setFlrcPacketParams(this->preambleLengthGFSK, this->syncWordLength, 1, 0x01, this->packetType == RADIOLIB_LR2021_GFSK_OOK_PACKET_FORMAT_FIXED, this->crcLenGFSK, cfg->transmit.len);
       
-      } else {
+      } else if(modem != RADIOLIB_LR2021_PACKET_TYPE_LR_FHSS) {
         return(RADIOLIB_ERR_WRONG_MODEM);
       }
 
@@ -1031,13 +1062,19 @@ int16_t LR2021::stageMode(RadioModeType_t mode, RadioModeConfig_t* cfg) {
       RADIOLIB_ASSERT(state);
 
       if(modem == RADIOLIB_LR2021_PACKET_TYPE_LR_FHSS) {
+        // an LR-FHSS frame is built from the payload in this step, so it cannot be written ahead
+        if(cfg->transmit.data == NULL) {
+          return(RADIOLIB_ERR_UNSUPPORTED);
+        }
+
         // in LR-FHSS mode, the packet is built by the device
         //! \todo [LR2021] add configurable LR-FHSS device offset
         state = LRxxxx::lrFhssBuildFrame(RADIOLIB_LR2021_CMD_LR_FHSS_BUILD_FRAME, this->lrFhssHdrCount, this->lrFhssCr, this->lrFhssGrid, true, this->lrFhssBw, this->lrFhssHopSeq, 0, cfg->transmit.data, cfg->transmit.len);
         RADIOLIB_ASSERT(state);
 
-      } else {
-        // write packet to buffer
+      } else if(cfg->transmit.data != NULL) {
+        // write packet to buffer - unless the caller already did that with writeTxBuffer,
+        // which it signals by leaving the payload pointer empty
         state = writeRadioTxFifo(cfg->transmit.data, cfg->transmit.len);
         RADIOLIB_ASSERT(state);
 
@@ -1054,6 +1091,25 @@ int16_t LR2021::stageMode(RadioModeType_t mode, RadioModeConfig_t* cfg) {
 
   this->stagedMode = mode;
   return(state);
+}
+
+int16_t LR2021::writeTxBuffer(const uint8_t* data, size_t len) {
+  if(data == NULL) {
+    return(RADIOLIB_ERR_NULL_POINTER);
+  }
+  if(len > RADIOLIB_LR2021_MAX_PACKET_LENGTH) {
+    return(RADIOLIB_ERR_PACKET_TOO_LONG);
+  }
+
+  // the transmit FIFO appends, so anything left in it has to go first
+  int16_t state = clearTxFifo();
+  RADIOLIB_ASSERT(state);
+
+  return(writeRadioTxFifo(data, len));
+}
+
+int16_t LR2021::clearTxBuffer() {
+  return(clearTxFifo());
 }
 
 int16_t LR2021::launchMode() {
@@ -1093,7 +1149,7 @@ float LR2021::getVoltage(uint8_t bits) {
     return(0);
   }
   
-  return((float)val / 1000.0f);
+  return((float)val * (1.0f / 1000.0f));
 }
 
 float LR2021::getTemperature(uint8_t source, uint8_t bits) {
@@ -1135,6 +1191,8 @@ float LR2021::getRSSI(bool packet, bool skipReceive) {
     state = this->getGfskPacketStatus(NULL, &rssi, NULL, NULL, NULL, NULL);
   } else if(modem == RADIOLIB_LR2021_PACKET_TYPE_OOK) {
     state = this->getOokPacketStatus(NULL, NULL, &rssi, NULL, NULL, NULL);
+  } else if (modem == RADIOLIB_LR2021_PACKET_TYPE_FLRC) {
+    state = this->getFlrcPacketStatus(NULL, &rssi, NULL, NULL, NULL);
   } else {
     return(0);
   }
@@ -1151,7 +1209,23 @@ float LR2021::getSNR() {
   if(modem != RADIOLIB_LR2021_PACKET_TYPE_LORA) { return(0); }
   state = this->getLoRaPacketStatus(NULL, NULL, NULL, &snr, NULL, NULL);
   if(state != RADIOLIB_ERR_NONE) { return(0); }
-  return(snr);  
+  return(snr);
+}
+
+int32_t LR2021::getFrequencyError() {
+  int32_t freqErr;
+  uint8_t modem = RADIOLIB_LR2021_PACKET_TYPE_NONE;
+  int16_t state = this->getPacketType(&modem);
+  if(state != RADIOLIB_ERR_NONE) { return(0); }
+  if(modem == RADIOLIB_LR2021_PACKET_TYPE_LORA) {
+    state = this->getLoRaPacketStatus(NULL, NULL, NULL, NULL, NULL, NULL, NULL, &freqErr);
+  } else if(modem == RADIOLIB_LR2021_PACKET_TYPE_FLRC) {
+    state = this->getFlrcPacketStatus(NULL, NULL, NULL, NULL, &freqErr);
+  } else {
+    state = RADIOLIB_ERR_WRONG_MODEM;
+  }
+  if(state != RADIOLIB_ERR_NONE) { return(0); }
+  return(freqErr);
 }
 
 uint8_t LR2021::randomByte() {
@@ -1161,6 +1235,11 @@ uint8_t LR2021::randomByte() {
 }
 
 int16_t LR2021::getLoRaRxHeaderInfo(uint8_t* cr, bool* hasCRC){
+  // check if in explicit header mode, as LR11x0, SX126x, SX127x and SX128x do
+  if(this->headerType == RADIOLIB_LRXXXX_LORA_HEADER_IMPLICIT) {
+    return(RADIOLIB_ERR_WRONG_MODEM);
+  }
+
   return(this->getLoRaPacketStatus(cr, hasCRC, NULL, NULL, NULL, NULL));
 }
 
